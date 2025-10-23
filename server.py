@@ -1,48 +1,72 @@
 from flask import Flask, jsonify
 import requests
+import os
+from datetime import datetime
 
 app = Flask(__name__)
 
-POLYGON_API_KEY = "_Atf0iAjKp1rrpNpOOzrwpsiqv4yNmYo"
+API_KEY = os.getenv("POLYGON_API_KEY")
+BASE_URL = "https://api.polygon.io/v3/reference/options/contracts"
 
-@app.route("/")
-def home():
-    return "✅ Bassam GEX Live API is running!"
-
-@app.route("/<symbol>")
-def get_data(symbol):
-    url = f"https://api.polygon.io/v3/snapshot/options/{symbol.upper()}?greeks=true&apiKey={POLYGON_API_KEY}"
-    r = requests.get(url)
-    data = r.json()
+def get_gamma_data(symbol="AAPL"):
+    url = f"{BASE_URL}?underlying_ticker={symbol}&expired=false&limit=100&apiKey={API_KEY}"
+    response = requests.get(url)
+    data = response.json()
 
     if "results" not in data:
-        return jsonify({"error": "No results"}), 400
+        return []
 
-    results = data["results"]
-    if not results:
-        return jsonify({"error": "Empty results"}), 400
+    contracts = data["results"]
+    gamma_data = []
 
-    underlying = results[0].get("underlying_asset", {}).get("price", 0)
-    filtered = [o for o in results if "greeks" in o and o["greeks"] and o.get("details")]
+    for c in contracts:
+        greeks = c.get("greeks", {})
+        gamma = greeks.get("gamma")
+        strike = c.get("strike_price")
+        if gamma is not None and strike is not None:
+            gamma_data.append({
+                "strike": strike,
+                "gamma": gamma,
+                "delta": greeks.get("delta"),
+                "theta": greeks.get("theta"),
+                "vega": greeks.get("vega")
+            })
 
-    strikes = sorted([o["details"]["strike_price"] for o in filtered])
-    gammas = [o["greeks"]["gamma"] for o in filtered if "greeks" in o and o["greeks"]]
+    gamma_data = sorted(gamma_data, key=lambda x: x["strike"])
+    return gamma_data
 
-    if not strikes or not gammas:
-        return jsonify({"error": "No gamma data"}), 400
+@app.route('/')
+def home():
+    return jsonify({
+        "message": "✅ Bassam GEX Live API is running",
+        "usage": "Use /AAPL or /TSLA or /SPY to fetch latest Gamma data"
+    })
 
-    # تحديد 5 فوق و5 تحت السعر الحالي
-    mid_index = min(range(len(strikes)), key=lambda i: abs(strikes[i] - underlying))
-    start = max(0, mid_index - 5)
-    end = min(len(strikes), mid_index + 6)
+@app.route('/<symbol>')
+def symbol_data(symbol):
+    gamma_data = get_gamma_data(symbol.upper())
 
-    selected_strikes = strikes[start:end]
-    selected_gammas = gammas[start:end]
+    if not gamma_data:
+        return jsonify({"error": "No gamma data"})
 
-    pine = f"""//@version=5
+    # استخراج أقرب 5 فوق السعر و5 تحته
+    try:
+        last_price = float(gamma_data[len(gamma_data)//2]["strike"])
+    except:
+        last_price = 0
+
+    top5 = gamma_data[-5:]
+    bottom5 = gamma_data[:5]
+    selected = bottom5 + top5
+
+    # تحويلها إلى كود PineScript تلقائي
+    strikes = ",".join([str(round(x["strike"], 2)) for x in selected])
+    gammas = ",".join([str(round(x["gamma"], 8)) for x in selected])
+
+    pine_code = f"""// Updated: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
 indicator("Bassam GEX Live – {symbol.upper()}", overlay=true, max_lines_count=500, max_labels_count=300)
-strikes = array.from({','.join(map(str, selected_strikes))})
-gammas  = array.from({','.join(map(str, selected_gammas))})
+strikes = array.from({strikes})
+gammas  = array.from({gammas})
 for i = 0 to array.size(strikes)-1
     strike = array.get(strikes, i)
     gamma  = array.get(gammas, i)
@@ -50,7 +74,13 @@ for i = 0 to array.size(strikes)-1
     line.new(bar_index - 50, strike, bar_index + 50, strike, color=colorLine, width=2)
 """
 
-    return pine, 200, {"Content-Type": "text/plain; charset=utf-8"}
+    return jsonify({
+        "symbol": symbol.upper(),
+        "count": len(selected),
+        "pine_code": pine_code,
+        "strikes": selected
+    })
+
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=10000)
