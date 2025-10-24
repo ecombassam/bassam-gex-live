@@ -179,7 +179,7 @@ def json_gex(symbol):
         if not expiry:
             expiry = pick_monthly_expiry(symbol)
 
-        contracts, price = fetch_chain(symbol, expiry, greeks=True, limit=500)
+        contracts, price = fetch_chain(symbol, expiry, greeks=True, limit=250)
         strikes, per_strike, cum = build_cumulative_gex(contracts, price)
         if not cum:
             return jsonify({"error": "No gamma data", "symbol": symbol}), 200
