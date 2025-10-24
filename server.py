@@ -35,7 +35,7 @@ def fetch_polygon(url: str, params: dict):
         raise RuntimeError({"status": "ERROR", "http": r.status_code, "data": data})
     return data
 
-def fetch_chain(symbol: str, expiry: str | None, greeks=True, limit=500):
+def fetch_chain(symbol: str, expiry: str | None, greeks=True, limit=250):
     """يجيب Snapshot Chain + Pagination (إن وجد)، ويعيد list بالكونتراكتات + price."""
     url = f"{POLY_BASE}/v3/snapshot/options/{symbol.upper()}"
     params = {"greeks": "true" if greeks else "false", "limit": limit}
@@ -212,7 +212,7 @@ def pine(symbol):
     expiry = request.args.get("expiry") or pick_monthly_expiry(symbol)
 
     try:
-        contracts, price = fetch_chain(symbol, expiry, greeks=True, limit=500)
+        contracts, price = fetch_chain(symbol, expiry, greeks=True, limit=250)
         _, _, cum = build_cumulative_gex(contracts, price)
         calls, puts, additional = top_levels_from_cum(cum, depth, depth, extras)
         percent_bars(calls); percent_bars(puts); percent_bars(additional)
@@ -229,7 +229,7 @@ def pine(symbol):
         extra_pct     = pct_str(additional)
 
         pine = f"""//@version=5
-indicator("Bassam GEX – Σ CUMULATIVE  |  {symbol.upper()}  |  Exp {expiry}", overlay=true, max_lines_count=500, max_labels_count=500)
+indicator("Bassam GEX – Σ CUMULATIVE  |  {symbol.upper()}  |  Exp {expiry}", overlay=true, max_lines_count=250, max_labels_count=250)
 
 // ===== Inputs (مطابقة لفلسفة Options GEX[Lite]) =====
 enable_lines   = input.bool(true,  "Lines")
