@@ -17,22 +17,33 @@ def gex(symbol):
         "apiKey": API_KEY
     }
 
-    r = requests.get(url, params=params, timeout=30)
-    data = r.json()
+    headers = {
+        "Accept": "application/json",
+        "User-Agent": "Bassam-GEX-Live/1.0"
+    }
+
+    try:
+        r = requests.get(url, params=params, headers=headers, timeout=30)
+        data = r.json()
+    except Exception as e:
+        return jsonify({"error": f"Request failed: {str(e)}", "symbol": symbol})
+
+    # لو الرد فارغ أو خطأ
+    if not data or "results" not in data:
+        return jsonify({"error": "Invalid response from Polygon", "data": data, "symbol": symbol})
+
     results = data.get("results", [])
+    if len(results) == 0:
+        return jsonify({"error": "Polygon returned empty results", "params": params})
 
-    if not results:
-        return jsonify({"error": "No options data", "symbol": symbol})
-
-    # استخراج السعر الحالي
+    # السعر الحالي
     current_price = results[0].get("underlying_asset", {}).get("price", 0)
 
-    # فلترة العقود ذات قيم gamma غير صفرية
     valid = []
     for opt in results:
-        strike = opt["details"].get("strike_price")
         greeks = opt.get("greeks") or {}
         gamma = greeks.get("gamma", 0)
+        strike = opt["details"].get("strike_price", 0)
         if gamma and gamma != 0:
             valid.append({
                 "strike": strike,
@@ -43,25 +54,21 @@ def gex(symbol):
             })
 
     if not valid:
-        return jsonify({"error": "No valid gamma data", "symbol": symbol})
+        return jsonify({"error": "No valid gamma data found", "count": len(results)})
 
-    # ترتيب الاسترايكات حسب السعر
+    # ترتيب الاسترايكات وتقسيمها
     valid.sort(key=lambda x: x["strike"])
-
-    # تقسيمها لأعلى وأسفل السعر الحالي
-    below = [v for v in valid if v["strike"] < current_price]
-    above = [v for v in valid if v["strike"] > current_price]
-
-    # اختيار أقرب 5 فوق و5 تحت
-    below = below[-5:] if len(below) > 5 else below
-    above = above[:5] if len(above) > 5 else above
+    below = [v for v in valid if v["strike"] < current_price][-5:]
+    above = [v for v in valid if v["strike"] > current_price][:5]
 
     return jsonify({
         "symbol": symbol,
         "price": current_price,
         "below": below,
-        "above": above
+        "above": above,
+        "total_contracts": len(valid)
     })
+
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8080)
