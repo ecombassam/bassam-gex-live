@@ -4,7 +4,7 @@ from flask import Flask, jsonify, Response
 import requests
 from urllib.parse import urlencode
 
-POLY_KEY = os.environ.get("POLYGON_KEY", "").strip()
+POLY_KEY = os.environ.get("POLYGON_API_KEY", "").strip()
 BASE = "https://api.polygon.io/v3/snapshot/options"
 
 app = Flask(__name__)
@@ -13,7 +13,7 @@ app = Flask(__name__)
 def get_chain(symbol: str, expiration_date: str|None=None, max_pages:int=8):
     """يسحب Snapshot Chain من بوليغون مع ترقيم الصفحات (cursor) بدون أي بارامترات غير مسموحة."""
     if not POLY_KEY:
-        return {"error":"Missing POLYGON_KEY env"}, []
+        return {"error":"Missing POLYGON_API_KEY env"}, []
     params = {"greeks":"true", "apiKey": POLY_KEY}
     if expiration_date:
         params["expiration_date"] = expiration_date
