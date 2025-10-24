@@ -9,6 +9,7 @@ load_dotenv()  # ✅ تفعيل القراءة من ملف .env
 
 POLY_KEY = os.environ.get("POLYGON_API_KEY") or os.environ.get("POLYGON_KEY") or ""
 POLY_KEY = POLY_KEY.strip()
+print("✅ Polygon Key Loaded:", POLY_KEY[:6] + "..." if POLY_KEY else "❌ EMPTY")
 BASE = "https://api.polygon.io/v3/snapshot/options"
 
 
