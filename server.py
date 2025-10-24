@@ -4,7 +4,8 @@ from flask import Flask, jsonify, Response
 import requests
 from urllib.parse import urlencode
 
-POLY_KEY = os.environ.get("POLYGON_API_KEY", "").strip()
+POLY_KEY = os.environ.get("POLYGON_API_KEY") or os.environ.get("POLYGON_KEY") or ""
+POLY_KEY = POLY_KEY.strip()
 BASE = "https://api.polygon.io/v3/snapshot/options"
 
 app = Flask(__name__)
