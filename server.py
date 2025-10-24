@@ -16,30 +16,22 @@ def jerr(msg, http=502, extra=None):
 
 def fetch_chain(symbol: str):
     """
-    يجلب كامل سلسلة الخيارات عبر pagination من Option Chain Snapshot.
-    توثيق: polygon Option Chain Snapshot يشمل greeks ومنها gamma. 
+    يجلب سلسلة الخيارات عبر Option Chain Snapshot.
     """
     if not POLY_KEY:
         return None, "POLYGON_API_KEY مفقود"
 
     url = f"{BASE}/{symbol.upper()}"
-    params = {"apiKey": POLY_KEY, "limit": 1000}
+    params = {"apiKey": POLY_KEY}
     all_results = []
-    while True:
-        r = requests.get(url, params=params, timeout=30)
-        if r.status_code != 200:
-            return None, f"Polygon error {r.status_code}: {r.text[:200]}"
-        data = r.json()
-        # الشكل الرسمي يتضمن: results[], underlyingAsset..., next_url (أحياناً)
-        results = data.get("results") or []
-        all_results.extend(results)
-        next_url = data.get("next_url")
-        if not next_url:
-            break
-        # next_url يحتوي apiKey أو لا؟ نضمنه دائماً:
-        url = next_url
-        params = {"apiKey": POLY_KEY}
+    r = requests.get(url, params=params, timeout=30)
+    if r.status_code != 200:
+        return None, f"Polygon error {r.status_code}: {r.text[:200]}"
+    data = r.json()
+    results = data.get("results") or []
+    all_results.extend(results)
     return {"raw": all_results, "meta": data}, None
+
 
 def get_underlying_price(any_result, fallback=math.nan):
     # بعض الاستجابات تضع السعر ضمن كل عقد (underlyingPrice) أو في meta
