@@ -1,204 +1,136 @@
-# server.py — Bassam GEX NetGamma (Credit / Leap Edition)
-# المتطلبات: pip install flask requests
-import os, json, math, datetime as dt
-from flask import Flask, request, Response, jsonify
-import requests
+# server.py — Bassam OI[Lite] v1.0 – Weekly OI Walls Analyzer
+import os, json, datetime as dt, requests
+from flask import Flask, jsonify, Response
 
 app = Flask(__name__)
 
-POLY_KEY = (os.environ.get("POLYGON_API_KEY") or "").strip()
-BASE = "https://api.polygon.io/v3/snapshot/options"
+# إعدادات عامة
+POLY_KEY  = (os.environ.get("POLYGON_API_KEY") or "").strip()
+BASE_SNAP = "https://api.polygon.io/v3/snapshot/options"
+TODAY     = dt.date.today
 
-# ──────────────────────────────
-# أدوات مساعدة
-# ──────────────────────────────
-def jerr(msg, http=502, extra=None):
+# 🔹 وظائف مساعدة
+def _err(msg, http=502, data=None, sym=None):
     body = {"error": msg}
-    if extra is not None:
-        body["data"] = extra
-    return Response(json.dumps(body, ensure_ascii=False), status=http, mimetype="application/json")
+    if data is not None: body["data"] = data
+    if sym: body["symbol"] = sym.upper()
+    return Response(json.dumps(body, ensure_ascii=False),
+                    status=http, mimetype="application/json")
 
-def fetch_greeks(symbol: str):
-    """جلب بيانات Snapshot/Greeks من Polygon."""
-    if not POLY_KEY:
-        return None, "POLYGON_API_KEY مفقود"
-    url = f"{BASE}/{symbol.upper()}/greeks"
-    r = requests.get(url, params={"apiKey": POLY_KEY}, timeout=30)
-    if r.status_code != 200:
-        return None, f"Polygon error {r.status_code}: {r.text[:200]}"
-    data = r.json()
-    results = data.get("results") or []
-    return {"raw": results, "meta": data}, None
-
-def get_underlying_price_from_any(result, fallback=math.nan):
-    up = None
-    if isinstance(result, dict):
-        up = (result.get("underlying_price") or
-              result.get("underlyingPrice") or
-              (result.get("underlying_asset") or {}).get("price") or
-              (result.get("underlyingAsset") or {}).get("price"))
+def _get(url, params=None):
+    params = params or {}
+    params["apiKey"] = POLY_KEY
+    headers = {"Authorization": f"Bearer {POLY_KEY}"} if POLY_KEY else {}
+    r = requests.get(url, params=params, headers=headers, timeout=30)
     try:
-        return float(up)
-    except:
-        return fallback
+        return r.status_code, r.json()
+    except Exception:
+        return r.status_code, {"error": "Invalid JSON"}
 
-def aggregate_net_gamma_by_strike(results):
-    """NetGamma = (Gamma*OI_call) - (Gamma*OI_put)."""
-    agg = {}
-    for c in results:
-        greeks = c.get("greeks") or {}
-        gamma  = greeks.get("gamma")
-        oi     = c.get("open_interest") or c.get("openInterest")
-        strike = c.get("strike_price") or c.get("strikePrice") or c.get("strike")
-        typ    = (c.get("contract_type") or c.get("option_type") or "").lower()
-        if not (gamma and oi and strike and typ in ["call", "put"]):
-            continue
-        try:
-            g = float(gamma)
-            oi = float(oi)
-            k = float(strike)
-        except:
-            continue
-        net = g * oi if typ == "call" else -g * oi
-        agg[k] = agg.get(k, 0) + net
-    return agg
+def next_friday():
+    today = TODAY()
+    days_ahead = 4 - today.weekday()
+    if days_ahead <= 0:
+        days_ahead += 7
+    return (today + dt.timedelta(days=days_ahead)).isoformat()
 
-def split_top_n_by_abs(agg, underlying_price, n=3):
-    above = [(k, v) for k, v in agg.items() if k > underlying_price]
-    below = [(k, v) for k, v in agg.items() if k < underlying_price]
-    above.sort(key=lambda x: abs(x[1]), reverse=True)
-    below.sort(key=lambda x: abs(x[1]), reverse=True)
-    return above[:n], below[:n]
+# 🔹 جلب بيانات Options من بوليغون
+def fetch_oi_data(symbol):
+    url = f"{BASE_SNAP}/{symbol.upper()}"
+    status, j = _get(url, {"greeks": "false", "limit": 250})
+    if status != 200 or j.get("status") != "OK":
+        return None, j
+    rows = j.get("results") or []
+    if not rows: return None, {"why": "no option data"}
 
-# ──────────────────────────────
-# إنشاء كود PineScript
-# ──────────────────────────────
-def to_pine(symbol, underlying_price, top_above, top_below):
-    def arr(nums):
-        return ",".join(f"{x:.4f}" for x in nums)
+    target_exp = next_friday()
+    filtered = [r for r in rows if r.get("details", {}).get("expiration_date") == target_exp]
+    if not filtered: return None, {"why": f"no contracts for {target_exp}"}
+    return filtered, target_exp
 
-    strikes_above = [k for k, _ in top_above]
-    net_above     = [v for _, v in top_above]
-    strikes_below = [k for k, _ in top_below]
-    net_below     = [v for _, v in top_below]
-    all_vals = (net_above + net_below) or [1.0]
-    max_abs  = max([abs(x) for x in all_vals]) if all_vals else 1.0
+# 🔹 استخراج OI الأعلى فوق وتحت السعر
+def analyze_oi(rows):
+    price = next((r.get("underlying_asset", {}).get("price") for r in rows if isinstance(r.get("underlying_asset", {}).get("price"), (int, float))), None)
+    calls, puts = [], []
 
+    for r in rows:
+        det = r.get("details", {})
+        strike = det.get("strike_price")
+        ctype = det.get("contract_type")
+        oi = r.get("open_interest")
+        if not (isinstance(strike, (int, float)) and isinstance(oi, (int, float))): continue
+        if ctype == "call": calls.append((strike, oi))
+        elif ctype == "put": puts.append((strike, oi))
+
+    # فصل حسب السعر الحالي
+    calls_above = [(s, oi) for s, oi in calls if s >= price]
+    puts_below  = [(s, oi) for s, oi in puts if s <= price]
+
+    top_calls = sorted(calls_above, key=lambda x: x[1], reverse=True)[:3]
+    top_puts  = sorted(puts_below, key=lambda x: x[1], reverse=True)[:3]
+    return price, top_calls, top_puts
+
+# 🔹 بناء كود PineScript
+def make_pine(symbol, exp, price, top_calls, top_puts):
+    def fmt(arr): return ",".join(str(round(x[0], 2)) for x in arr)
+    def pct(arr):
+        if not arr: return "1.0"
+        base = arr[0][1]
+        return ",".join(str(round(x[1] / base, 2)) for x in arr)
+
+    title = f"Bassam OI[Lite] • Open Interest Walls (v1.0) | {symbol.upper()} | Exp {exp}"
     return f"""//@version=5
-indicator("Bassam NetΓ (Polygon.io) — {symbol}", overlay=true, max_boxes_count=500, max_labels_count=500)
+indicator("{title}", overlay=true, max_lines_count=500, max_labels_count=500)
 
-// ╭─────────────────────────────╮
-// │ إعدادات الاستراتيجية        │
-// ╰─────────────────────────────╯
-strategyType = input.string("Credit", "نوع الاستراتيجية", options=["Credit", "Leap"])
-daysRange = strategyType == "Credit" ? 7 : 30
+calls_strikes = array.from({fmt(top_calls)})
+calls_pct     = array.from({pct(top_calls)})
+puts_strikes  = array.from({fmt(top_puts)})
+puts_pct      = array.from({pct(top_puts)})
 
-// ╭─────────────────────────────╮
-// │ إعدادات الشكل                │
-// ╰─────────────────────────────╯
-groupD = "Design"
-barsW   = input.int(18, "عرض العمود (شموع)", minval=4, step=1, group=groupD)
-baseThk = input.float(0.002, "سُمك الأساس", minval=0.0002, step=0.0002, group=groupD)
-showLbl = input.bool(true, "إظهار الملصقات", group=groupD)
-posCol  = input.color(color.new(color.lime, 0), "لون الموجب", group=groupD)
-negCol  = input.color(color.new(color.red,  0), "لون السالب", group=groupD)
+if barstate.islast
+    // CALL Walls
+    for i = 0 to array.size(calls_strikes) - 1
+        y = array.get(calls_strikes, i)
+        p = array.get(calls_pct, i)
+        w = int(math.max(6, p * 120))
+        line.new(bar_index - 5, y, bar_index + w - 5, y, color=color.new(color.lime, 0), width=6)
+        label.new(bar_index + w, y, str.tostring(math.round(p * 100)) + "% OI", style=label.style_label_left, textcolor=color.white, color=color.new(color.lime, 70))
 
-// ╭─────────────────────────────╮
-// │ بيانات NetGamma              │
-// ╰─────────────────────────────╯
-var float uPrice = {underlying_price:.4f}
-strikes_above = array.from({arr(strikes_above)})
-net_above     = array.from({arr(net_above)})
-strikes_below = array.from({arr(strikes_below)})
-net_below     = array.from({arr(net_below)})
+    // PUT Walls
+    for i = 0 to array.size(puts_strikes) - 1
+        y = array.get(puts_strikes, i)
+        p = array.get(puts_pct, i)
+        w = int(math.max(6, p * 120))
+        line.new(bar_index - 5, y, bar_index + w - 5, y, color=color.new(color.red, 0), width=6)
+        label.new(bar_index + w, y, str.tostring(math.round(p * 100)) + "% OI", style=label.style_label_left, textcolor=color.white, color=color.new(color.red, 70))
 
-maxAbs = {max_abs:.8f}
-norm(x) => maxAbs == 0 ? 0.0 : math.abs(x)/maxAbs
-
-left  = bar_index - barsW
-right = bar_index
-
-draw_col(level, netg) =>
-    n = norm(netg)
-    col = netg > 0 ? color.new(posCol, 80-int(n*80)) : color.new(negCol, 80-int(n*80))
-    half = uPrice * baseThk * (0.33 + n)
-    box.new(left, level+half, right, level-half, bgcolor=col, border_color=col)
-    if showLbl
-        label.new(right, level, str.tostring(level) + " | NetΓ " + str.tostring(netg, format.mintick), textcolor=color.white, style=label.style_label_right, bgcolor=col)
-
-for i=0 to array.size(strikes_above)-1
-    draw_col(array.get(strikes_above,i), array.get(net_above,i))
-for i=0 to array.size(strikes_below)-1
-    draw_col(array.get(strikes_below,i), array.get(net_below,i))
-
-plot(uPrice, "السعر الحالي", color=color.new(color.gray,0), linewidth=2)
-label.new(bar_index, na, "Strategy: " + strategyType + " (" + str.tostring(daysRange) + " أيام)", style=label.style_label_left)
+    // HVL Label
+    label.new(bar_index + 5, (high + low)/2, "OI Σ Weekly ({exp})", textcolor=color.aqua, style=label.style_label_left)
 """
 
-# ──────────────────────────────
-# Flask Endpoints
-# ──────────────────────────────
-@app.get("/")
-def root():
-    return jsonify({"ok": True, "service": "Bassam GEX NetGamma (Credit/Leap)", "docs": "/tv?symbol=AAPL"})
+# 🔹 المسارات
+@app.route("/<symbol>/pine")
+def pine(symbol):
+    if not POLY_KEY: return _err("Missing POLYGON_API_KEY", 401)
+    data, exp = fetch_oi_data(symbol)
+    if not data: return _err("No OI data", 502)
+    price, top_calls, top_puts = analyze_oi(data)
+    pine_code = make_pine(symbol, exp, price, top_calls, top_puts)
+    return Response(pine_code, mimetype="text/plain")
 
-@app.get("/tv")
-def tv_code():
-    """يولّد كود Pine بناءً على NetGamma ومدة العقود."""
-    symbol = (request.args.get("symbol") or "").upper().strip()
-    if not symbol:
-        return jerr("يرجى تمرير symbol، مثال: /tv?symbol=AAPL")
-
-    try:
-        n = int(request.args.get("n", "3"))
-    except:
-        n = 3
-    strategy_type = (request.args.get("strategy") or "credit").lower()
-
-    data, err = fetch_greeks(symbol)
-    if err: return jerr(err)
-    results = data["raw"]
-    if not results:
-        return jerr("لم يتم العثور على بيانات عقود")
-
-    # 🧭 تحديد المدة الزمنية حسب نوع الاستراتيجية
-    today = dt.date.today()
-    if strategy_type == "credit":
-        max_expiry = today + dt.timedelta(days=7)
-    else:
-        max_expiry = today + dt.timedelta(days=30)
-
-    # تصفية العقود حسب تاريخ الانتهاء
-    filtered = []
-    for c in results:
-        exp = c.get("expiration_date") or c.get("expirationDate")
-        if not exp: continue
-        try:
-            exp_date = dt.date.fromisoformat(exp)
-            if exp_date <= max_expiry:
-                filtered.append(c)
-        except:
-            continue
-
-    if not filtered:
-        return jerr("لم يتم العثور على عقود ضمن النطاق الزمني")
-
-    # السعر الأساسي
-    u = get_underlying_price_from_any(filtered[0], fallback=math.nan)
-    if math.isnan(u):
-        for c in filtered:
-            u = get_underlying_price_from_any(c, fallback=math.nan)
-            if not math.isnan(u): break
-    if math.isnan(u):
-        return jerr("تعذّر تحديد السعر الحالي")
-
-    agg = aggregate_net_gamma_by_strike(filtered)
-    if not agg:
-        return jerr("لا توجد قيم Net Gamma صالحة")
-
-    top_above, top_below = split_top_n_by_abs(agg, u, n=n)
-    pine = to_pine(symbol, u, top_above, top_below)
-    return Response(pine, mimetype="text/plain; charset=utf-8")
+@app.route("/<symbol>/json")
+def json_route(symbol):
+    if not POLY_KEY: return _err("Missing POLYGON_API_KEY", 401)
+    data, exp = fetch_oi_data(symbol)
+    if not data: return _err("No OI data", 502)
+    price, top_calls, top_puts = analyze_oi(data)
+    return jsonify({
+        "symbol": symbol.upper(),
+        "expiry": exp,
+        "price": round(price, 2),
+        "call_walls": [{"strike": s, "oi": oi} for s, oi in top_calls],
+        "put_walls": [{"strike": s, "oi": oi} for s, oi in top_puts]
+    })
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", "8000")))
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8000)))
