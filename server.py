@@ -1,16 +1,22 @@
-# bassam_gex_live.py
 from flask import Flask, jsonify
-import os, requests, math
+import os, requests
 
-API_KEY = os.getenv("POLYGON_KEY")  # مفتاح Polygon
-BASE = "https://api.polygon.io"
 app = Flask(__name__)
+
+API_KEY = os.getenv("POLYGON_KEY")
+BASE = "https://api.polygon.io"
 
 @app.get("/<symbol>")
 def gex(symbol):
     symbol = symbol.upper()
     url = f"{BASE}/v3/snapshot/options/{symbol}"
-    params = {"greeks": "true", "apiKey": API_KEY, "limit": 1000}
+    params = {
+        "greeks": "true",
+        "limit": 1000,
+        "expiration_date": "2025-10-24",
+        "apiKey": API_KEY
+    }
+
     r = requests.get(url, params=params, timeout=30)
     data = r.json()
     results = data.get("results", [])
@@ -18,69 +24,43 @@ def gex(symbol):
     if not results:
         return jsonify({"error": "No options data", "symbol": symbol})
 
-    contracts = []
-    underlying_price = None
+    # استخراج السعر الحالي
+    current_price = results[0].get("underlying_asset", {}).get("price", 0)
 
+    # فلترة العقود ذات قيم gamma غير صفرية
+    valid = []
     for opt in results:
-        details = opt.get("details") or {}
+        strike = opt["details"].get("strike_price")
         greeks = opt.get("greeks") or {}
-        underlying = opt.get("underlying_asset") or {}
+        gamma = greeks.get("gamma", 0)
+        if gamma and gamma != 0:
+            valid.append({
+                "strike": strike,
+                "gamma": gamma,
+                "delta": greeks.get("delta"),
+                "theta": greeks.get("theta"),
+                "vega": greeks.get("vega")
+            })
 
-        gamma = greeks.get("gamma")
-        theta = greeks.get("theta") or 0
-        oi = opt.get("open_interest") or 0
-        strike = details.get("strike_price")
-        ctype = details.get("contract_type")
+    if not valid:
+        return jsonify({"error": "No valid gamma data", "symbol": symbol})
 
-        # تجاهل القيم الفارغة
-        if gamma in (None, 0) or not strike:
-            continue
+    # ترتيب الاسترايكات حسب السعر
+    valid.sort(key=lambda x: x["strike"])
 
-        # التقاط سعر الأصل لمرة واحدة
-        if not underlying_price and isinstance(underlying.get("price"), (int, float)):
-            underlying_price = underlying["price"]
+    # تقسيمها لأعلى وأسفل السعر الحالي
+    below = [v for v in valid if v["strike"] < current_price]
+    above = [v for v in valid if v["strike"] > current_price]
 
-        # قوة العقد (Gamma × Open Interest)
-        strength = abs(gamma) * (oi + 1)
-
-        contracts.append({
-            "strike": float(strike),
-            "gamma": float(gamma),
-            "theta": float(theta),
-            "oi": int(oi),
-            "type": ctype,
-            "strength": strength
-        })
-
-    if not contracts:
-        return jsonify({"error": "No valid gamma contracts", "symbol": symbol})
-
-    if not underlying_price:
-        # fallback لو ما جاب السعر
-        underlying_price = sorted(contracts, key=lambda x: x["strike"])[len(contracts)//2]["strike"]
-
-    # فصل فوق السعر وتحته
-    above = [c for c in contracts if c["strike"] > underlying_price]
-    below = [c for c in contracts if c["strike"] < underlying_price]
-
-    # ترتيب حسب القوة التنازلية
-    above.sort(key=lambda x: x["strength"], reverse=True)
-    below.sort(key=lambda x: x["strength"], reverse=True)
-
-    # أخذ 5 فوق و5 تحت فقط
-    top_above = above[:5]
-    top_below = below[:5]
-
-    final = sorted(top_above + top_below, key=lambda x: x["strike"])
+    # اختيار أقرب 5 فوق و5 تحت
+    below = below[-5:] if len(below) > 5 else below
+    above = above[:5] if len(above) > 5 else above
 
     return jsonify({
         "symbol": symbol,
-        "underlying_price": round(underlying_price, 2),
-        "above_count": len(top_above),
-        "below_count": len(top_below),
-        "strikes": [c["strike"] for c in final],
-        "gammas": [c["gamma"] for c in final],
-        "contracts": final
+        "price": current_price,
+        "below": below,
+        "above": above
     })
 
 if __name__ == "__main__":
