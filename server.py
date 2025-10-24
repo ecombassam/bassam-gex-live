@@ -12,7 +12,7 @@ def gex(symbol):
     url = f"{BASE}/v3/snapshot/options/{symbol}"
     params = {
         "greeks": "true",
-        "limit": 1000,
+        "limit": 30,
         "expiration_date": "2025-10-24",
         "apiKey": API_KEY
     }
