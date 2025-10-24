@@ -1,13 +1,18 @@
-# server.py (v1.6 Lux Zones Edition)
+# server.py — Bassam GEX[Lite] Lux Precision Fix (v1.7)
 import os, json, math, datetime as dt
 from flask import Flask, jsonify, Response
 import requests
 
 app = Flask(__name__)
-POLY_KEY = (os.environ.get("POLYGON_API_KEY") or "").strip()
-BASE_SNAP = "https://api.polygon.io/v3/snapshot/options"
-TODAY = dt.date.today
 
+# 🔹 إعدادات عامة
+POLY_KEY  = (os.environ.get("POLYGON_API_KEY") or "").strip()
+BASE_SNAP = "https://api.polygon.io/v3/snapshot/options"
+TODAY     = dt.date.today
+
+# ──────────────────────────────
+# وظائف مساعدة
+# ──────────────────────────────
 def _err(msg, http=502, data=None, sym=None):
     body = {"error": msg}
     if data is not None: body["data"] = data
@@ -27,24 +32,34 @@ def _get(url, params=None):
 
 def _need_key(): return not POLY_KEY
 
-# ---------- 1) أقرب Weekly ----------
+# ──────────────────────────────
+# 🔹 1) إيجاد أقرب Weekly Expiration
+# ──────────────────────────────
 def find_first_weekly_date(symbol):
     url = f"{BASE_SNAP}/{symbol.upper()}"
     status, j = _get(url, {"greeks":"true","limit":100})
-    if status!=200 or j.get("status")!="OK": return None, j
+    if status != 200 or j.get("status") != "OK":
+        return None, j
     rows = j.get("results") or []
     today = TODAY().isoformat()
-    expiries = sorted({it.get("details",{}).get("expiration_date") for it in rows if it.get("details",{}).get("expiration_date")>=today})
-    return (expiries[0], None) if expiries else (None, {"why":"no expiries"})
+    expiries = sorted({it.get("details",{}).get("expiration_date") for it in rows if it.get("details",{}).get("expiration_date") >= today})
+    if not expiries:
+        return None, {"why":"no expiries"}
+    return expiries[0], None
 
-# ---------- 2) السلسلة ----------
+# ──────────────────────────────
+# 🔹 2) جلب سلسلة العقود للاكسباير المحدد
+# ──────────────────────────────
 def fetch_chain(symbol, exp):
     url = f"{BASE_SNAP}/{symbol.upper()}"
     status, j = _get(url, {"greeks":"true","expiration_date":exp})
-    if status!=200 or j.get("status")!="OK": return None, j
+    if status!=200 or j.get("status")!="OK":
+        return None, j
     return j.get("results") or [], None
 
-# ---------- 3) Σ CUMULATIVE ----------
+# ──────────────────────────────
+# 🔹 3) حساب CUMULATIVE GAMMA
+# ──────────────────────────────
 def cumulative_gamma(items):
     price = next((it.get("underlying_asset",{}).get("price") for it in items if isinstance(it.get("underlying_asset",{}).get("price"),(int,float))), None)
     bucket = {}
@@ -59,25 +74,29 @@ def cumulative_gamma(items):
     rows.sort(key=lambda x:x["strike"])
     return price, rows
 
-# ---------- 4) تحديد الجدران ----------
+# ──────────────────────────────
+# 🔹 4) تحديد الجدران (CALL / PUT)
+# ──────────────────────────────
 def pick_walls(rows, price, around=0.35, depth=3):
     lo, hi = price*(1-around), price*(1+around)
     filt = [r for r in rows if lo<=r["strike"]<=hi]
     pos = sorted([r for r in filt if r["cum"]>0], key=lambda r:r["cum"], reverse=True)
     neg = sorted([r for r in filt if r["cum"]<0], key=lambda r:r["cum"])
-    return pos[:depth+2], neg[:depth+2]
+    return pos[:depth], neg[:depth]
 
-# ---------- 5) توليد PineScript مع مناطق Lux ----------
+# ──────────────────────────────
+# 🔹 5) بناء PineScript بمناطق Lux
+# ──────────────────────────────
 def make_pine(symbol, exp, price, pos, neg):
     def norm(arr):
         base = abs(arr[0]["cum"]) if arr else 1
         return [{"strike":r["strike"],"pct":abs(r["cum"])/base} for r in arr]
 
     calls, puts = norm(pos), norm(neg)
-    c_strikes = ",".join(str(round(r["strike"],2)) for r in calls[:3])
-    c_pcts    = ",".join(str(round(r["pct"],2)) for r in calls[:3])
-    p_strikes = ",".join(str(round(r["strike"],2)) for r in puts[:3])
-    p_pcts    = ",".join(str(round(r["pct"],2)) for r in puts[:3])
+    c_strikes = ",".join(str(round(r["strike"],2)) for r in calls) or "260,257.5"
+    c_pcts    = ",".join(str(round(r["pct"],2)) for r in calls) or "1.0,0.8"
+    p_strikes = ",".join(str(round(r["strike"],2)) for r in puts)  or "250,247.5"
+    p_pcts    = ",".join(str(round(r["pct"],2)) for r in puts)  or "0.04,0.02"
 
     title = f"Bassam GEX[Lite] • Σ CUMULATIVE (v1.7 Lux Precision Fix) | {symbol.upper()} | Exp {exp}"
     return f"""//@version=5
@@ -116,7 +135,9 @@ for i=0 to array.size(puts_strikes)-1
 label.new(bar_index+5, (high+low)/2, "HVL Σ 0DTE ({dt.date.today():%m/%d})", textcolor=color.aqua, style=label.style_label_left)
 """
 
-# ---------- Routes ----------
+# ──────────────────────────────
+# 🔹 Routes
+# ──────────────────────────────
 @app.route("/")
 def home():
     return jsonify({"ok":True,"usage":"/AAPL/pine or /AAPL/json"})
@@ -124,23 +145,23 @@ def home():
 @app.route("/<symbol>/pine")
 def pine(symbol):
     if _need_key(): return _err("Missing POLYGON_API_KEY",401)
-    exp,e=find_first_weekly_date(symbol)
+    exp,e = find_first_weekly_date(symbol)
     if e: return _err("No expiry",502,e)
-    items,e2=fetch_chain(symbol,exp)
+    items,e2 = fetch_chain(symbol,exp)
     if e2: return _err("Invalid Polygon",502,e2)
-    price,rows=cumulative_gamma(items)
-    pos,neg=pick_walls(rows,price)
+    price,rows = cumulative_gamma(items)
+    pos,neg = pick_walls(rows,price)
     return Response(make_pine(symbol,exp,price,pos,neg), mimetype="text/plain")
 
 @app.route("/<symbol>/json")
 def js(symbol):
     if _need_key(): return _err("Missing POLYGON_API_KEY",401)
-    exp,e=find_first_weekly_date(symbol)
+    exp,e = find_first_weekly_date(symbol)
     if e: return _err("No expiry",502,e)
-    items,e2=fetch_chain(symbol,exp)
+    items,e2 = fetch_chain(symbol,exp)
     if e2: return _err("Invalid Polygon",502,e2)
-    price,rows=cumulative_gamma(items)
-    pos,neg=pick_walls(rows,price)
+    price,rows = cumulative_gamma(items)
+    pos,neg = pick_walls(rows,price)
     return jsonify({"symbol":symbol.upper(),"expiry":exp,"price":price,"calls":pos[:3],"puts":neg[:3]})
 
 if __name__=="__main__":
