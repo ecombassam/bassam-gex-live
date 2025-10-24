@@ -1,5 +1,5 @@
-# server.py — Bassam GEX Top-Gamma Generator (v1.0)
-# متطلبات: pip install flask requests
+# server.py — Bassam GEX NetGamma (Credit / Leap Edition)
+# المتطلبات: pip install flask requests
 import os, json, math, datetime as dt
 from flask import Flask, request, Response, jsonify
 import requests
@@ -9,261 +9,196 @@ app = Flask(__name__)
 POLY_KEY = (os.environ.get("POLYGON_API_KEY") or "").strip()
 BASE = "https://api.polygon.io/v3/snapshot/options"
 
+# ──────────────────────────────
+# أدوات مساعدة
+# ──────────────────────────────
 def jerr(msg, http=502, extra=None):
     body = {"error": msg}
-    if extra is not None: body["data"] = extra
+    if extra is not None:
+        body["data"] = extra
     return Response(json.dumps(body, ensure_ascii=False), status=http, mimetype="application/json")
 
-def fetch_chain(symbol: str):
-    """
-    يجلب سلسلة الخيارات عبر Option Chain Snapshot.
-    """
+def fetch_greeks(symbol: str):
+    """جلب بيانات Snapshot/Greeks من Polygon."""
     if not POLY_KEY:
         return None, "POLYGON_API_KEY مفقود"
-
-    url = f"{BASE}/{symbol.upper()}"
-    params = {"apiKey": POLY_KEY}
-    all_results = []
-    r = requests.get(url, params=params, timeout=30)
+    url = f"{BASE}/{symbol.upper()}/greeks"
+    r = requests.get(url, params={"apiKey": POLY_KEY}, timeout=30)
     if r.status_code != 200:
         return None, f"Polygon error {r.status_code}: {r.text[:200]}"
     data = r.json()
     results = data.get("results") or []
-    all_results.extend(results)
-    return {"raw": all_results, "meta": data}, None
+    return {"raw": results, "meta": data}, None
 
-
-def get_underlying_price(any_result, fallback=math.nan):
-    # بعض الاستجابات تضع السعر ضمن كل عقد (underlyingPrice) أو في meta
+def get_underlying_price_from_any(result, fallback=math.nan):
     up = None
-    # جرّب في عنصر عقد:
-    if isinstance(any_result, dict):
-        up = (any_result.get("underlyingPrice") or
-              (any_result.get("underlying_asset") or {}).get("price"))
-        # مسميات شائعة أخرى:
-        if up is None:
-            u = any_result.get("underlyingAsset") or any_result.get("underlying")
-            if isinstance(u, dict):
-                up = u.get("price") or u.get("lastTradePrice")
+    if isinstance(result, dict):
+        up = (result.get("underlying_price") or
+              result.get("underlyingPrice") or
+              (result.get("underlying_asset") or {}).get("price") or
+              (result.get("underlyingAsset") or {}).get("price"))
     try:
         return float(up)
     except:
         return fallback
 
-def pick_nearest_expiry(results):
-    # نختار أقرب تاريخ انتهاء من بين العقود (حتى تكون المستويات عملية)
-    exp_dates = {}
-    for c in results:
-        exp = c.get("expiration_date") or c.get("expirationDate")
-        if exp:
-            exp_dates.setdefault(exp, 0)
-            exp_dates[exp] += 1
-    if not exp_dates:
-        return None
-    return sorted(exp_dates.keys())[0]  # الأقرب زمنياً بصيغة YYYY-MM-DD
-
-def aggregate_gamma_by_strike(results, expiry=None):
-    """
-    نجمع |gamma| لكل strike (كول + بوت) على نفس تاريخ الانتهاء (إن تم تمريره).
-    نرجع dict: strike -> abs_gamma_sum
-    """
+def aggregate_net_gamma_by_strike(results):
+    """NetGamma = (Gamma*OI_call) - (Gamma*OI_put)."""
     agg = {}
-    chosen = []
     for c in results:
-        exp = c.get("expiration_date") or c.get("expirationDate")
-        if expiry and exp != expiry:
-            continue
         greeks = c.get("greeks") or {}
-        g = greeks.get("gamma")
+        gamma  = greeks.get("gamma")
+        oi     = c.get("open_interest") or c.get("openInterest")
         strike = c.get("strike_price") or c.get("strikePrice") or c.get("strike")
-        # تجاهل القيَم الناقصة
-        if g is None or strike is None:
+        typ    = (c.get("contract_type") or c.get("option_type") or "").lower()
+        if not (gamma and oi and strike and typ in ["call", "put"]):
             continue
         try:
-            g = float(g)
+            g = float(gamma)
+            oi = float(oi)
             k = float(strike)
         except:
             continue
-        # نجمع |gamma| (قوة) بغض النظر عن النوع
-        agg[k] = agg.get(k, 0.0) + abs(g)
-        chosen.append(c)
-    return agg, chosen
+        net = g * oi if typ == "call" else -g * oi
+        agg[k] = agg.get(k, 0) + net
+    return agg
 
-def split_top_n(agg, underlying_price, n=3):
+def split_top_n_by_abs(agg, underlying_price, n=3):
     above = [(k, v) for k, v in agg.items() if k > underlying_price]
     below = [(k, v) for k, v in agg.items() if k < underlying_price]
-    above.sort(key=lambda x: x[1], reverse=True)
-    below.sort(key=lambda x: x[1], reverse=True)
+    above.sort(key=lambda x: abs(x[1]), reverse=True)
+    below.sort(key=lambda x: abs(x[1]), reverse=True)
     return above[:n], below[:n]
 
+# ──────────────────────────────
+# إنشاء كود PineScript
+# ──────────────────────────────
 def to_pine(symbol, underlying_price, top_above, top_below):
-    """
-    يولّد سكربت Pine v5 يرسم مستويات STRIKES كأشرطة أفقية (box) ملونة بتدرّج حسب القوة.
-    ملاحظة: تم اختيار box.new لتمثيل "أعمدة" عند مستويات السعر (Y)،
-    وعرض العمود (السُمك) يعتمد على قوة الجاما (مُطبّع 0..1).
-    يمكنك تعديل الإعدادات من Inputs أسفل السكربت.
-    """
     def arr(nums):
         return ",".join(f"{x:.4f}" for x in nums)
 
     strikes_above = [k for k, _ in top_above]
-    power_above   = [v for _, v in top_above]
+    net_above     = [v for _, v in top_above]
     strikes_below = [k for k, _ in top_below]
-    power_below   = [v for _, v in top_below]
+    net_below     = [v for _, v in top_below]
+    all_vals = (net_above + net_below) or [1.0]
+    max_abs  = max([abs(x) for x in all_vals]) if all_vals else 1.0
 
-    all_powers = (power_above + power_below) or [1.0]
-    max_p = max(all_powers) if all_powers else 1.0
+    return f"""//@version=5
+indicator("Bassam NetΓ (Polygon.io) — {symbol}", overlay=true, max_boxes_count=500, max_labels_count=500)
 
-    pine = f"""//@version=5
-indicator("Bassam GEX Top Γ (Auto from Polygon) — {symbol}", overlay=true, max_labels_count=500, max_boxes_count=500)
+// ╭─────────────────────────────╮
+// │ إعدادات الاستراتيجية        │
+// ╰─────────────────────────────╯
+strategyType = input.string("Credit", "نوع الاستراتيجية", options=["Credit", "Leap"])
+daysRange = strategyType == "Credit" ? 7 : 30
 
-// ————— مدخلات التصميم —————
+// ╭─────────────────────────────╮
+// │ إعدادات الشكل                │
+// ╰─────────────────────────────╯
 groupD = "Design"
-colUp   = input.color(color.new(color.lime, 0), "لون أعلى السعر", group=groupD)
-colDn   = input.color(color.new(color.red,  0), "لون أسفل السعر", group=groupD)
-barsW   = input.int(18, "عرض العمود (عدد الشموع)", minval=4, step=1, group=groupD)
-thick   = input.float(0.002, "سُمك العمود نسبة من السعر", minval=0.0002, step=0.0002, group=groupD)
-showLbl = input.bool(true, "إظهار ملصق القوة", group=groupD)
+barsW   = input.int(18, "عرض العمود (شموع)", minval=4, step=1, group=groupD)
+baseThk = input.float(0.002, "سُمك الأساس", minval=0.0002, step=0.0002, group=groupD)
+showLbl = input.bool(true, "إظهار الملصقات", group=groupD)
+posCol  = input.color(color.new(color.lime, 0), "لون الموجب", group=groupD)
+negCol  = input.color(color.new(color.red,  0), "لون السالب", group=groupD)
 
-// ————— بيانات مولّدة —————
-var string _src = "Polygon.io Option Chain Snapshot"
+// ╭─────────────────────────────╮
+// │ بيانات NetGamma              │
+// ╰─────────────────────────────╯
 var float uPrice = {underlying_price:.4f}
-
-// أقوى 3 فوق + 3 تحت (strike، قوة مطلقة مجمعة)
 strikes_above = array.from({arr(strikes_above)})
-power_above   = array.from({arr(power_above)})
+net_above     = array.from({arr(net_above)})
 strikes_below = array.from({arr(strikes_below)})
-power_below   = array.from({arr(power_below)})
+net_below     = array.from({arr(net_below)})
 
-// للتطبيع 0..1
-maxPow = {max_p:.12f}
-norm(x) => maxPow == 0 ? 0.0 : x / maxPow
+maxAbs = {max_abs:.8f}
+norm(x) => maxAbs == 0 ? 0.0 : math.abs(x)/maxAbs
 
-// نرسم على آخر barsW شمعة كي تظهر الأعمدة على يمين الشارت
 left  = bar_index - barsW
 right = bar_index
 
-// دالة رسم عمود عند مستوى السعر (كـ box)
-draw_column(level, pwr, baseColor) =>
-    n = norm(pwr)
-    transp = 80 - int(n * 80)   // كلما زادت القوة قلّ الشفافية
-    col = color.new(baseColor, transp)
-    half = uPrice * thick * (0.33 + n)  // السُمك يتزايد مع القوة
-    top    = level + half
-    bottom = level - half
-    b = box.new(left, top, right, bottom, border_color=col, bgcolor=col)
+draw_col(level, netg) =>
+    n = norm(netg)
+    col = netg > 0 ? color.new(posCol, 80-int(n*80)) : color.new(negCol, 80-int(n*80))
+    half = uPrice * baseThk * (0.33 + n)
+    box.new(left, level+half, right, level-half, bgcolor=col, border_color=col)
     if showLbl
-        label.new(right, top, str.tostring(level) + " | Γ " + str.tostring(pwr, format.mintick), textcolor=color.white, style=label.style_label_right, bgcolor=col)
-    b
+        label.new(right, level, str.tostring(level) + " | NetΓ " + str.tostring(netg, format.mintick), textcolor=color.white, style=label.style_label_right, bgcolor=col)
 
-// رسم الأعمدة
-for i = 0 to array.size(strikes_above)-1
-    draw_column(array.get(strikes_above, i), array.get(power_above, i), colUp)
+for i=0 to array.size(strikes_above)-1
+    draw_col(array.get(strikes_above,i), array.get(net_above,i))
+for i=0 to array.size(strikes_below)-1
+    draw_col(array.get(strikes_below,i), array.get(net_below,i))
 
-for i = 0 to array.size(strikes_below)-1
-    draw_column(array.get(strikes_below, i), array.get(power_below, i), colDn)
-
-// خط السعر الحالي للمرجع
-plot(uPrice, "السعر الحالي", color=color.new(color.gray, 0), linewidth=2)
-
-// سياق المصدر
-var label srcL = na
-if barstate.islast
-    if na(srcL)
-        srcL := label.new(bar_index, uPrice, "Source: " + _src, style=label.style_label_lower_left, textcolor=color.white, bgcolor=color.new(color.silver, 40))
-    else
-        label.set_x(srcL, bar_index)
+plot(uPrice, "السعر الحالي", color=color.new(color.gray,0), linewidth=2)
+label.new(bar_index, na, "Strategy: " + strategyType + " (" + str.tostring(daysRange) + " أيام)", style=label.style_label_left)
 """
-    return pine
 
+# ──────────────────────────────
+# Flask Endpoints
+# ──────────────────────────────
 @app.get("/")
 def root():
-    return jsonify({"ok": True, "service": "Bassam GEX Top-Gamma Generator", "docs": "/tv?symbol=TSLA"})
+    return jsonify({"ok": True, "service": "Bassam GEX NetGamma (Credit/Leap)", "docs": "/tv?symbol=AAPL"})
 
 @app.get("/tv")
 def tv_code():
-    """
-    يولّد كود Pine v5 مباشر.
-    بارامترات:
-      symbol=TSLA (إلزامي)
-      n=3 (اختيار أقوى N فوق وتحت)
-      scope=nearest (افتراضي: أقرب انتهاء) | all (كل السلسلة)
-    """
+    """يولّد كود Pine بناءً على NetGamma ومدة العقود."""
     symbol = (request.args.get("symbol") or "").upper().strip()
     if not symbol:
-        return jerr("الباراميتر symbol مفقود. مثال: /tv?symbol=TSLA")
+        return jerr("يرجى تمرير symbol، مثال: /tv?symbol=AAPL")
 
     try:
         n = int(request.args.get("n", "3"))
     except:
         n = 3
-    scope = (request.args.get("scope") or "nearest").lower()
+    strategy_type = (request.args.get("strategy") or "credit").lower()
 
-    data, err = fetch_chain(symbol)
+    data, err = fetch_greeks(symbol)
     if err: return jerr(err)
-
     results = data["raw"]
     if not results:
-        return jerr("لم يتم العثور على عقود خيارات")
+        return jerr("لم يتم العثور على بيانات عقود")
 
-    # السعر: خذه من أول عقد كمرجع
-    u = get_underlying_price(results[0], fallback=math.nan)
+    # 🧭 تحديد المدة الزمنية حسب نوع الاستراتيجية
+    today = dt.date.today()
+    if strategy_type == "credit":
+        max_expiry = today + dt.timedelta(days=7)
+    else:
+        max_expiry = today + dt.timedelta(days=30)
+
+    # تصفية العقود حسب تاريخ الانتهاء
+    filtered = []
+    for c in results:
+        exp = c.get("expiration_date") or c.get("expirationDate")
+        if not exp: continue
+        try:
+            exp_date = dt.date.fromisoformat(exp)
+            if exp_date <= max_expiry:
+                filtered.append(c)
+        except:
+            continue
+
+    if not filtered:
+        return jerr("لم يتم العثور على عقود ضمن النطاق الزمني")
+
+    # السعر الأساسي
+    u = get_underlying_price_from_any(filtered[0], fallback=math.nan)
     if math.isnan(u):
-        # محاولة بديلة: بعض الاستجابات تضع السعر ضمن كل عقد بنفس الاسم
-        for c in results:
-            u = get_underlying_price(c, fallback=math.nan)
+        for c in filtered:
+            u = get_underlying_price_from_any(c, fallback=math.nan)
             if not math.isnan(u): break
     if math.isnan(u):
-        return jerr("تعذّر تحديد السعر الحالي للأصل")
+        return jerr("تعذّر تحديد السعر الحالي")
 
-    expiry = None
-    if scope == "nearest":
-        expiry = pick_nearest_expiry(results)
-
-    agg, _ = aggregate_gamma_by_strike(results, expiry=expiry)
+    agg = aggregate_net_gamma_by_strike(filtered)
     if not agg:
-        return jerr("لا توجد قيم Gamma صالحة في السلسلة")
+        return jerr("لا توجد قيم Net Gamma صالحة")
 
-    top_above, top_below = split_top_n(agg, u, n=n)
-
+    top_above, top_below = split_top_n_by_abs(agg, u, n=n)
     pine = to_pine(symbol, u, top_above, top_below)
     return Response(pine, mimetype="text/plain; charset=utf-8")
-
-@app.get("/api/json")
-def api_json():
-    """
-    بديل JSON لإرجاع القوائم فقط (للاختبار أو الاستخدام الحر):
-    /api/json?symbol=TSLA&n=3&scope=nearest
-    """
-    symbol = (request.args.get("symbol") or "").upper().strip()
-    n = int(request.args.get("n", "3"))
-    scope = (request.args.get("scope") or "nearest").lower()
-    data, err = fetch_chain(symbol)
-    if err: return jerr(err)
-
-    results = data["raw"]
-    if not results:
-        return jerr("لم يتم العثور على عقود خيارات")
-
-    u = get_underlying_price(results[0], fallback=math.nan)
-    if math.isnan(u):
-        for c in results:
-            u = get_underlying_price(c, fallback=math.nan)
-            if not math.isnan(u): break
-    if math.isnan(u):
-        return jerr("تعذّر تحديد السعر الحالي للأصل")
-
-    expiry = pick_nearest_expiry(results) if scope == "nearest" else None
-    agg, _ = aggregate_gamma_by_strike(results, expiry=expiry)
-    above, below = split_top_n(agg, u, n=n)
-    return jsonify({
-        "symbol": symbol,
-        "underlying_price": u,
-        "expiry_scope": "nearest" if expiry else "all",
-        "expiry_used": expiry,
-        "top_above": [{"strike": k, "gamma_abs": v} for k, v in above],
-        "top_below": [{"strike": k, "gamma_abs": v} for k, v in below],
-    })
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", "8000")))
