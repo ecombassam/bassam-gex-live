@@ -1,11 +1,10 @@
-# server.py (v1.5 live, no caching)
+# server.py (v1.6 Lux Zones Edition)
 import os, json, math, datetime as dt
-from flask import Flask, jsonify, Response, request
+from flask import Flask, jsonify, Response
 import requests
-from urllib.parse import urlencode
 
 app = Flask(__name__)
-POLY_KEY = (os.environ.get("POLYGON_API_KEY") or os.environ.get("POLYGON_KEY") or "").strip()
+POLY_KEY = (os.environ.get("POLYGON_API_KEY") or "").strip()
 BASE_SNAP = "https://api.polygon.io/v3/snapshot/options"
 TODAY = dt.date.today
 
@@ -17,7 +16,6 @@ def _err(msg, http=502, data=None, sym=None):
 
 def _get(url, params=None):
     params = params or {}
-    # نرسل المفتاح بطريقتين لضمان القبول
     params["apiKey"] = POLY_KEY
     headers = {"Authorization": f"Bearer {POLY_KEY}"} if POLY_KEY else {}
     r = requests.get(url, params=params, headers=headers, timeout=30)
@@ -27,185 +25,123 @@ def _get(url, params=None):
         return r.status_code, {"raw": r.text}
     return r.status_code, j
 
-def _need_key():
-    return (not POLY_KEY)
+def _need_key(): return not POLY_KEY
 
-# ---------- 1) إيجاد أقرب Weekly ----------
-def find_first_weekly_date(symbol:str):
-    """
-    نجيب أول صفحة Snapshot ثم نختار أقرب expiration_date >= اليوم.
-    (هذا يعطي عمليًا 1st weekly لمعظم الرموز. لو ودك منطق أدق لاحقًا نضيف استثناء الشهري.)
-    """
+# ---------- 1) أقرب Weekly ----------
+def find_first_weekly_date(symbol):
     url = f"{BASE_SNAP}/{symbol.upper()}"
-    status, j = _get(url, {"greeks":"true", "limit":100})
+    status, j = _get(url, {"greeks":"true","limit":100})
     if status!=200 or j.get("status")!="OK": return None, j
     rows = j.get("results") or []
-    if not rows: return None, {"why":"no snapshot rows"}
     today = TODAY().isoformat()
-    expiries = set()
-    for it in rows:
-        d = it.get("details",{}).get("expiration_date")
-        if d and d>=today: expiries.add(d)
-    if not expiries: return None, {"why":"no future expiries"}
-    first = sorted(expiries)[0]
-    return first, None
+    expiries = sorted({it.get("details",{}).get("expiration_date") for it in rows if it.get("details",{}).get("expiration_date")>=today})
+    return (expiries[0], None) if expiries else (None, {"why":"no expiries"})
 
-# ---------- 2) جلب السلسلة للاكسباير المختار ----------
-def fetch_chain(symbol:str, expiration_date:str):
+# ---------- 2) السلسلة ----------
+def fetch_chain(symbol, exp):
     url = f"{BASE_SNAP}/{symbol.upper()}"
-    all_items, cursor = [], None
-    pages = 0
-    while pages<8:
-        params = {"greeks":"true", "expiration_date": expiration_date}
-        if cursor:
-            # next_url من بوليغون يحتوي cursor=...
-            return_code, j = _get(f"{url}", {"cursor": cursor})
-        else:
-            return_code, j = _get(url, params)
-        if return_code!=200 or j.get("status")!="OK":
-            return None, j
-        items = j.get("results") or []
-        all_items.extend(items)
-        next_url = j.get("next_url")
-        if not next_url: break
-        cursor = next_url.split("cursor=")[-1]
-        pages += 1
-    return all_items, None
+    status, j = _get(url, {"greeks":"true","expiration_date":exp})
+    if status!=200 or j.get("status")!="OK": return None, j
+    return j.get("results") or [], None
 
-# ---------- 3) حساب Σ CUMULATIVE لكل Strike ----------
+# ---------- 3) Σ CUMULATIVE ----------
 def cumulative_gamma(items):
-    under_price = None
+    price = next((it.get("underlying_asset",{}).get("price") for it in items if isinstance(it.get("underlying_asset",{}).get("price"),(int,float))), None)
+    bucket = {}
     for it in items:
-        p = it.get("underlying_asset",{}).get("price")
-        if isinstance(p,(int,float)) and p>0:
-            under_price = p
-            break
-    buckets = {}  # strike -> {call,put}
-    for it in items:
-        det = it.get("details",{})
-        g   = it.get("greeks",{})
-        t   = det.get("contract_type")
-        strike = det.get("strike_price")
-        gamma  = g.get("gamma")
-        if not (isinstance(strike,(int,float)) and isinstance(gamma,(int,float))): continue
-        d = buckets.setdefault(strike, {"call":0.0,"put":0.0})
-        if t=="call": d["call"] += gamma
-        elif t=="put": d["put"] += gamma
-    rows = []
-    for k,v in buckets.items():
-        rows.append({
-            "strike": float(k),
-            "cum": float(v["call"] - v["put"]),
-            "call": float(v["call"]),
-            "put":  float(v["put"]),
-        })
-    rows.sort(key=lambda r: r["strike"])
-    return under_price, rows
+        d,g = it.get("details",{}), it.get("greeks",{})
+        t, strike, gamma = d.get("contract_type"), d.get("strike_price"), g.get("gamma")
+        if not isinstance(strike,(int,float)) or not isinstance(gamma,(int,float)): continue
+        b = bucket.setdefault(strike, {"call":0,"put":0})
+        if t=="call": b["call"]+=gamma
+        elif t=="put": b["put"]+=gamma
+    rows = [{"strike":k,"cum":v["call"]-v["put"],"call":v["call"],"put":v["put"]} for k,v in bucket.items()]
+    rows.sort(key=lambda x:x["strike"])
+    return price, rows
 
-def pick_walls(rows, price, around_pct=0.35, depth=3, extra=4):
-    # فلترة حول السعر
-    flt = rows
-    if isinstance(price,(int,float)) and price>0:
-        lo, hi = price*(1-around_pct), price*(1+around_pct)
-        flt = [r for r in rows if lo<=r["strike"]<=hi]
-    pos = [r for r in flt if r["cum"]>0]
-    neg = [r for r in flt if r["cum"]<0]
-    pos.sort(key=lambda r:r["cum"], reverse=True)
-    neg.sort(key=lambda r:r["cum"])  # الأكثر سلبًا أولًا
-    return pos[:depth+extra], neg[:depth+extra]  # نرجع الكل، والـ Pine يرسم 3 أساسية ويظهر % للباقي لو حاب
+# ---------- 4) تحديد الجدران ----------
+def pick_walls(rows, price, around=0.35, depth=3):
+    lo, hi = price*(1-around), price*(1+around)
+    filt = [r for r in rows if lo<=r["strike"]<=hi]
+    pos = sorted([r for r in filt if r["cum"]>0], key=lambda r:r["cum"], reverse=True)
+    neg = sorted([r for r in filt if r["cum"]<0], key=lambda r:r["cum"])
+    return pos[:depth+2], neg[:depth+2]
 
-def _bar_len(pct, max_len=120):
-    pct = max(0.0, min(1.0, pct))
-    return max(10, int(round(pct*max_len)))
+# ---------- 5) توليد PineScript مع مناطق Lux ----------
+def make_pine(symbol, exp, price, pos, neg):
+    def norm(arr):
+        base = abs(arr[0]["cum"]) if arr else 1
+        return [{"strike":r["strike"],"pct":abs(r["cum"])/base} for r in arr]
 
-# ---------- 4) توليد Pine مطابق لإعدادات GEX Lite ----------
-def make_pine(symbol, expiry, price, pos, neg, depth=3, add_levels=4):
-    def norm(arr, take, sign):
-        # نحسب نسبة كل مستوى لأقوى مستوى من نفس النوع
-        base = (arr[0]["cum"] if arr else 0.0)
-        base = abs(base)
-        out  = []
-        for i, r in enumerate(arr[:take], 1):
-            val = r["cum"]
-            pct = (abs(val)/base) if base>0 else 0.0
-            out.append({"i":i, "strike":r["strike"], "pct":pct})
-        return out
+    calls, puts = norm(pos), norm(neg)
+    c_strikes = ",".join(str(round(r["strike"],2)) for r in calls[:3])
+    c_pcts    = ",".join(str(round(r["pct"],2)) for r in calls[:3])
+    p_strikes = ",".join(str(round(r["strike"],2)) for r in puts[:3])
+    p_pcts    = ",".join(str(round(r["pct"],2)) for r in puts[:3])
 
-    calls = norm(pos, depth+add_levels, +1)
-    puts  = norm(neg, depth+add_levels, -1)
-
-    def emit(side, color_expr, label_side):
-        lines=[]
-        for i, r in enumerate(side, 1):
-            s  = r["strike"]
-            pc = r["pct"]
-            L  = _bar_len(pc)
-            txt = f'{int(round(pc*100))}%'
-            lines.append(f"""
-// {'CALL' if 'lime' in color_expr else 'PUT'} wall #{i}
-line.new(bar_index, {s}, bar_index-1000, {s}, extend=extend.left, color={color_expr}, width=1)
-var line bar{i}{'C' if 'lime' in color_expr else 'P'} = na
-if barstate.islast
-    if not na(bar{i}{'C' if 'lime' in color_expr else 'P'}): line.delete(bar{i}{'C' if 'lime' in color_expr else 'P'})
-    bar{i}{'C' if 'lime' in color_expr else 'P'} := line.new(bar_index, {s}, bar_index + {L}, {s}, color={color_expr}, width=6)
-    label.new(bar_index + {L} + 2, {s}, "{txt}", textcolor=color.white, color=color.new({color_expr}, 0), style=label.style_label_left, size=size.large)
-""")
-        return "".join(lines)
-
-    title = f"Bassam GEX – Σ CUMULATIVE | {symbol} | 1st Weekly | Exp {expiry}"
-    pine = f"""// Generated from Polygon snapshot | Symbol={symbol} | Exp={expiry} | Price={round(price,2) if price else 'na'}
-//@version=5
+    title = f"Bassam GEX[Lite] • Σ CUMULATIVE (v1.7 Lux Precision Fix) | {symbol.upper()} | Exp {exp}"
+    return f"""//@version=5
 indicator("{title}", overlay=true, max_lines_count=500, max_labels_count=500)
+calls_strikes = array.from({c_strikes})
+calls_pct = array.from({c_pcts})
+puts_strikes = array.from({p_strikes})
+puts_pct = array.from({p_pcts})
 
-// GEX Lite visual: Lines + Bars + % with info | extension ←
-enStrk = input.bool(true, "Enable strikes")
-enLines= input.bool(true, "Lines")
-enBars = input.bool(true, "Bars")
-enPct  = input.bool(true, "% with info")
-extSel = input.string("←", "If Lines enabled, then line Extension", options=["←","→","↔","none"])
-callDepth = input.int(3, "CALL Depth", minval=1, maxval=10, inline="C")
-putDepth  = input.int(3, "PUT Depth",  minval=1, maxval=10, inline="P")
+// 🌈 Lux Zones (CALL/PUT/Transition)
+if array.size(calls_strikes)>=2 and array.size(puts_strikes)>=2
+    callTop = array.get(calls_strikes,0)
+    callBot = array.get(calls_strikes,1)
+    putTop  = array.get(puts_strikes,0)
+    putBot  = array.get(puts_strikes,1)
+    hvlMid  = (putTop+callBot)/2
+    box.new(left=bar_index-60, top=callTop, right=bar_index+60, bottom=hvlMid, bgcolor=color.new(color.lime,85))
+    box.new(left=bar_index-60, top=hvlMid, right=bar_index+60, bottom=putBot, bgcolor=color.new(color.aqua,85))
+    box.new(left=bar_index-60, top=callBot, right=bar_index+60, bottom=putTop, bgcolor=color.new(color.gray,90))
 
-{emit(calls, "color.new(color.lime, 0)", "right")}
-{emit(puts,  "color.new(color.red,  0)", "right")}
+// 🟩 Bars & Labels
+for i=0 to array.size(calls_strikes)-1
+    y = array.get(calls_strikes,i)
+    pct = array.get(calls_pct,i)
+    w = int(math.max(6, pct*120))
+    line.new(bar_index-5, y, bar_index+w-5, y, color=color.new(color.lime,90), width=6)
+    label.new(bar_index+w, y, str.tostring(math.round(pct*100))+"%", style=label.style_label_left, textcolor=color.white, color=color.new(color.lime,70))
+
+for i=0 to array.size(puts_strikes)-1
+    y = array.get(puts_strikes,i)
+    pct = array.get(puts_pct,i)
+    w = int(math.max(6, pct*120))
+    line.new(bar_index-5, y, bar_index+w-5, y, color=color.new(color.red,90), width=6)
+    label.new(bar_index+w, y, str.tostring(math.round(pct*100))+"%", style=label.style_label_left, textcolor=color.white, color=color.new(color.red,70))
+
+label.new(bar_index+5, (high+low)/2, "HVL Σ 0DTE ({dt.date.today():%m/%d})", textcolor=color.aqua, style=label.style_label_left)
 """
-    return pine
 
-# ------------------- Routes -------------------
+# ---------- Routes ----------
 @app.route("/")
 def home():
-    return jsonify({"ok": True, "usage": "/SYMBOL/pine  (PineScript)  |  /SYMBOL/json  (summary)"}), 200
+    return jsonify({"ok":True,"usage":"/AAPL/pine or /AAPL/json"})
 
 @app.route("/<symbol>/pine")
-def pine_route(symbol):
-    if _need_key(): return _err("Missing POLYGON_API_KEY", 401, sym=symbol)
-    # نحدد أقرب weekly
-    exp, e = find_first_weekly_date(symbol)
-    if e: return _err("Failed to detect nearest weekly expiry", 502, e, symbol)
-    items, e2 = fetch_chain(symbol, exp)
-    if e2: return _err("Invalid response from Polygon", 502, e2, symbol)
-    price, rows = cumulative_gamma(items)
-    pos, neg    = pick_walls(rows, price, around_pct=0.35, depth=3, extra=4)
-    pine_code   = make_pine(symbol.upper(), exp, price, pos, neg, depth=3, add_levels=4)
-    return Response(pine_code, mimetype="text/plain")
+def pine(symbol):
+    if _need_key(): return _err("Missing POLYGON_API_KEY",401)
+    exp,e=find_first_weekly_date(symbol)
+    if e: return _err("No expiry",502,e)
+    items,e2=fetch_chain(symbol,exp)
+    if e2: return _err("Invalid Polygon",502,e2)
+    price,rows=cumulative_gamma(items)
+    pos,neg=pick_walls(rows,price)
+    return Response(make_pine(symbol,exp,price,pos,neg), mimetype="text/plain")
 
 @app.route("/<symbol>/json")
-def json_route(symbol):
-    if _need_key(): return _err("Missing POLYGON_API_KEY", 401, sym=symbol)
-    exp, e = find_first_weekly_date(symbol)
-    if e: return _err("Failed to detect nearest weekly expiry", 502, e, symbol)
-    items, e2 = fetch_chain(symbol, exp)
-    if e2: return _err("Invalid response from Polygon", 502, e2, symbol)
-    price, rows = cumulative_gamma(items)
-    pos, neg    = pick_walls(rows, price, around_pct=0.35, depth=3, extra=4)
-    return jsonify({
-        "symbol": symbol.upper(),
-        "expiry": exp,
-        "price": round(price,2) if price else None,
-        "call_walls": [{"strike":r["strike"], "cum":r["cum"]} for r in pos[:3]],
-        "put_walls":  [{"strike":r["strike"], "cum":r["cum"]} for r in neg[:3]],
-        "total_levels": len(rows)
-    })
+def js(symbol):
+    if _need_key(): return _err("Missing POLYGON_API_KEY",401)
+    exp,e=find_first_weekly_date(symbol)
+    if e: return _err("No expiry",502,e)
+    items,e2=fetch_chain(symbol,exp)
+    if e2: return _err("Invalid Polygon",502,e2)
+    price,rows=cumulative_gamma(items)
+    pos,neg=pick_walls(rows,price)
+    return jsonify({"symbol":symbol.upper(),"expiry":exp,"price":price,"calls":pos[:3],"puts":neg[:3]})
 
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8000)))
+if __name__=="__main__":
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT",8000)))
