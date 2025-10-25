@@ -10,9 +10,6 @@ POLY_KEY  = (os.environ.get("POLYGON_API_KEY") or "").strip()
 BASE_SNAP = "https://api.polygon.io/v3/snapshot/options"
 TODAY     = dt.date.today
 
-# ------------------------------------------------------------
-# الرموز المعتمدة
-# ------------------------------------------------------------
 SYMBOLS = [
     "AAPL","META","MSFT","NVDA","TSLA","GOOGL","AMD",
     "CRWD","SPY","PLTR","LULU","LLY","COIN","MSTR","APP","ASML"
