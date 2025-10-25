@@ -196,8 +196,9 @@ if syminfo.ticker == "{sym}"
 """
         blocks.append(block)
 
+    title = f"Bassam OI[Pro] • v4.0 SmartMode | {symbol.upper()}"
     pine = f"""//@version=5
-indicator("GEX PRO", overlay=true, max_lines_count=500, max_labels_count=500)
+indicator("{title}", overlay=true, max_lines_count=500, max_labels_count=500)
 mode = input.string("Weekly", "Expiry Mode", options=["Weekly","Monthly"], group="Settings")
 
 
