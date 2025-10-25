@@ -146,6 +146,16 @@ def json_route(symbol):
         "call_walls": [{"strike": s, "oi": oi} for s, oi in top_calls],
         "put_walls": [{"strike": s, "oi": oi} for s, oi in top_puts]
     })
+@app.route("/")
+def home():
+    return jsonify({
+        "status": "OK ✅",
+        "usage": {
+            "example_pine": "/AAPL/pine",
+            "example_json": "/AAPL/json"
+        },
+        "author": "Bassam GEX – Weekly Credit Spread Analyzer"
+    })
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8000)))
