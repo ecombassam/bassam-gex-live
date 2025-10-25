@@ -1,4 +1,4 @@
-# server.py — Bassam OI[Pro] v3.2 – Clean Gradient Edition (Weekly + Monthly)
+# server.py — Bassam OI[Pro] v3.3 – Exclusive Mode Edition (Weekly OR Monthly only)
 import os, json, datetime as dt, requests
 from flask import Flask, jsonify, Response
 
@@ -24,7 +24,6 @@ def _get(url, params=None):
 
 #────────────────────────────────────────────
 def fetch_all(symbol):
-    """يجلب جميع صفحات snapshot (حد 50)"""
     url = f"{BASE_SNAP}/{symbol.upper()}"
     cursor, all_rows = None, []
     for _ in range(10):
@@ -51,7 +50,7 @@ def find_expiries(rows):
 def analyze_oi(rows, expiry, limit):
     rows = [r for r in rows if r.get("details", {}).get("expiration_date") == expiry]
     if not rows:
-        return None, [], []
+        return [], []
     calls, puts = [], []
     for r in rows:
         det = r.get("details", {})
@@ -64,7 +63,7 @@ def analyze_oi(rows, expiry, limit):
         elif ctype == "put": puts.append((strike, oi))
     top_calls = sorted(calls, key=lambda x: x[1], reverse=True)[:limit]
     top_puts  = sorted(puts, key=lambda x: x[1], reverse=True)[:limit]
-    return None, top_calls, top_puts
+    return top_calls, top_puts
 
 #────────────────────────────────────────────
 @app.route("/<symbol>/json")
@@ -77,9 +76,9 @@ def json_route(symbol):
         return _err("No upcoming expiries found", 404, {"why": "empty list"}, symbol)
 
     exp_week = expiries[0]
-    _, w_calls, w_puts = analyze_oi(rows, exp_week, 3)
+    w_calls, w_puts = analyze_oi(rows, exp_week, 3)
     exp_month = next((d for d in expiries if d.endswith("-28") or d.endswith("-29") or d.endswith("-30") or d.endswith("-31")), expiries[-1])
-    _, m_calls, m_puts = analyze_oi(rows, exp_month, 6)
+    m_calls, m_puts = analyze_oi(rows, exp_month, 6)
 
     return jsonify({
         "symbol": symbol.upper(),
@@ -98,7 +97,6 @@ def json_route(symbol):
 #────────────────────────────────────────────
 @app.route("/<symbol>/pine")
 def pine_route(symbol):
-    """يُولّد كود PineScript متكامل مع النسبة وتدرّج الألوان بدون السعر الحالي"""
     if not POLY_KEY:
         return _err("Missing POLYGON_API_KEY", 401)
     rows = fetch_all(symbol)
@@ -107,9 +105,9 @@ def pine_route(symbol):
         return _err("No upcoming expiries found", 404, {"why": "empty list"}, symbol)
 
     exp_week = expiries[0]
-    _, w_calls, w_puts = analyze_oi(rows, exp_week, 3)
+    w_calls, w_puts = analyze_oi(rows, exp_week, 3)
     exp_month = next((d for d in expiries if d.endswith("-28") or d.endswith("-29") or d.endswith("-30") or d.endswith("-31")), expiries[-1])
-    _, m_calls, m_puts = analyze_oi(rows, exp_month, 6)
+    m_calls, m_puts = analyze_oi(rows, exp_month, 6)
 
     def normalize(data):
         if not data: return []
@@ -119,7 +117,7 @@ def pine_route(symbol):
     w_calls_n, w_puts_n = normalize(w_calls), normalize(w_puts)
     m_calls_n, m_puts_n = normalize(m_calls), normalize(m_puts)
 
-    title = f"Bassam OI[Pro] • v3.2 Clean Gradient | {symbol.upper()}"
+    title = f"Bassam OI[Pro] • v3.3 Exclusive Mode | {symbol.upper()}"
     pine = f"""//@version=5
 indicator("{title}", overlay=true, max_lines_count=500, max_labels_count=500)
 
@@ -152,8 +150,8 @@ if barstate.islast
         draw_levels(weekly_calls, weekly_cpct, color.lime)
         draw_levels(weekly_puts, weekly_ppct, color.red)
     if mode == "Monthly"
-        draw_levels(monthly_calls, monthly_cpct, color.green)
-        draw_levels(monthly_puts, monthly_ppct, color.purple)
+        draw_levels(monthly_calls, monthly_cpct, color.new(color.green, 0))
+        draw_levels(monthly_puts, monthly_ppct, color.new(color.purple, 0))
 """
 
     return Response(pine, mimetype="text/plain")
@@ -167,12 +165,11 @@ def home():
             "json": "/AAPL/json",
             "pine": "/AAPL/pine"
         },
-        "author": "Bassam OI[Pro] v3.2 – Clean Gradient Edition",
+        "author": "Bassam OI[Pro] v3.3 – Exclusive Mode Edition",
         "features": [
-            "Weekly + Monthly OI Walls",
+            "Weekly OR Monthly view (never both)",
             "Automatic color gradient by strength",
-            "Percentage at bar end",
-            "No price line for minimal design"
+            "Percentage display at bar end"
         ]
     })
 
