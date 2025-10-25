@@ -1,4 +1,4 @@
-# server.py — Bassam OI[Lite] v1.6 – Smart Weekly Credit Spread Analyzer (limit=50)
+# server.py — Bassam OI[Pro] v1.7 – Smart Weekly Credit Spread Analyzer (Top 3 CALLs & PUTs ±20%)
 import os, json, datetime as dt, requests
 from flask import Flask, jsonify, Response
 
@@ -27,10 +27,10 @@ def _get(url, params=None):
 
 # ─────────────────────────────
 def fetch_all(symbol):
-    """يجلب جميع الصفحات من Snapshot (مع limit=50 فقط)"""
+    """يجلب جميع صفحات snapshot بحد 50"""
     url = f"{BASE_SNAP}/{symbol.upper()}"
     cursor, all_rows = None, []
-    for _ in range(10):  # حد أقصى 10 صفحات
+    for _ in range(10):  # بحد أقصى 10 صفحات
         params = {"greeks": "true", "limit": 50}
         if cursor:
             params["cursor"] = cursor
@@ -66,14 +66,25 @@ def find_next_weekly(symbol):
 
 # ─────────────────────────────
 def analyze_oi(rows, expiry):
-    """يحسب أقوى 3 مستويات CALL و PUT حسب الـ OI"""
+    """يحسب أقوى 3 CALL و 3 PUT حول السعر ±20%"""
     rows = [r for r in rows if r.get("details", {}).get("expiration_date") == expiry]
+
+    # 🔹 تحديد السعر الحالي
     price = None
     for r in rows:
         p = r.get("underlying_asset", {}).get("price")
         if isinstance(p, (int, float)) and p > 0:
             price = p
             break
+    if not price:
+        return None, [], []
+
+    # 🔹 فلترة العقود ±20% حول السعر
+    low, high = price * 0.8, price * 1.2
+    rows = [
+        r for r in rows
+        if low <= (r.get("details", {}).get("strike_price") or 0) <= high
+    ]
 
     calls, puts = [], []
     for r in rows:
@@ -88,6 +99,7 @@ def analyze_oi(rows, expiry):
         elif ctype == "put":
             puts.append((strike, oi))
 
+    # 🔹 اختيار أقوى 3 مستويات من كل نوع
     top_calls = sorted(calls, key=lambda x: x[1], reverse=True)[:3]
     top_puts  = sorted(puts, key=lambda x: x[1], reverse=True)[:3]
     return price, top_calls, top_puts
@@ -100,34 +112,38 @@ def make_pine(symbol, exp, price, top_calls, top_puts):
         base = arr[0][1]
         return ",".join(str(round(x[1] / base, 2)) for x in arr)
 
-    title = f"Bassam OI[Lite] • Σ OI Levels | {symbol.upper()} | Exp {exp}"
+    title = f"Bassam OI[Pro] • Top OI Walls ±20% | {symbol.upper()} | Exp {exp}"
     return f"""//@version=5
 indicator("{title}", overlay=true, max_lines_count=500, max_labels_count=500)
 
-// Auto-fetched from Polygon snapshot (Next Weekly)
+// Auto-fetched from Polygon snapshot
 calls_strikes = array.from({fmt(top_calls)})
 calls_pct     = array.from({pct(top_calls)})
 puts_strikes  = array.from({fmt(top_puts)})
 puts_pct      = array.from({pct(top_puts)})
 
 if barstate.islast
-    // 🟩 CALL Walls (مناطق بيع سبريد كول)
+    // 🟩 CALL Walls
     for i = 0 to array.size(calls_strikes) - 1
         y = array.get(calls_strikes, i)
         p = array.get(calls_pct, i)
-        w = int(math.max(6, p * 120))
-        line.new(bar_index - 5, y, bar_index + w - 5, y, color=color.new(color.lime, 0), width=6)
-        label.new(bar_index + w, y, str.tostring(math.round(p * 100)) + "% OI", style=label.style_label_left, textcolor=color.white, color=color.new(color.lime, 70))
+        h = int(math.max(8, p * 150))
+        line.new(bar_index - 5, y, bar_index + h, y, color=color.new(color.lime, 0), width=8)
+        label.new(bar_index + h, y, "CALL " + str.tostring(y) + "\\n" + str.tostring(math.round(p * 100)) + "% OI", 
+            style=label.style_label_left, textcolor=color.white, color=color.new(color.lime, 70))
 
-    // 🟥 PUT Walls (مناطق بيع سبريد بوت)
+    // 🟥 PUT Walls
     for i = 0 to array.size(puts_strikes) - 1
         y = array.get(puts_strikes, i)
         p = array.get(puts_pct, i)
-        w = int(math.max(6, p * 120))
-        line.new(bar_index - 5, y, bar_index + w - 5, y, color=color.new(color.red, 0), width=6)
-        label.new(bar_index + w, y, str.tostring(math.round(p * 100)) + "% OI", style=label.style_label_left, textcolor=color.white, color=color.new(color.red, 70))
+        h = int(math.max(8, p * 150))
+        line.new(bar_index - 5, y, bar_index + h, y, color=color.new(color.red, 0), width=8)
+        label.new(bar_index + h, y, "PUT " + str.tostring(y) + "\\n" + str.tostring(math.round(p * 100)) + "% OI",
+            style=label.style_label_left, textcolor=color.white, color=color.new(color.red, 70))
 
-    label.new(bar_index + 5, (high + low)/2, "Weekly OI Σ (Exp {exp})", textcolor=color.aqua, style=label.style_label_left)
+    // 💎 السعر الحالي
+    line.new(bar_index - 10, {price}, bar_index + 50, {price}, color=color.new(color.aqua, 0), width=2)
+    label.new(bar_index + 50, {price}, "Price: " + str.tostring({price}), textcolor=color.aqua)
 """
 
 # ─────────────────────────────
@@ -168,7 +184,7 @@ def home():
             "example_pine": "/AAPL/pine",
             "example_json": "/AAPL/json"
         },
-        "author": "Bassam OI[Lite] – Smart Weekly Credit Spread Analyzer (v1.6, limit=50)"
+        "author": "Bassam OI[Pro] – Smart Weekly Credit Spread Analyzer (v1.7, ±20%)"
     })
 
 if __name__ == "__main__":
