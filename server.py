@@ -328,7 +328,7 @@ if showHVL
 
 {''.join(blocks)}
 
-// ===== 240m Ask Group (fixed timeframe) =====
+# ===== 240m Ask Group (fixed timeframe) =====
 h240 = request.security(syminfo.tickerid, "240", high)
 l240 = request.security(syminfo.tickerid, "240", low)
 c240 = request.security(syminfo.tickerid, "240", close)
