@@ -48,7 +48,7 @@ def find_next_weekly(symbol):
 def fetch_oi_for_expiry(symbol, expiry):
     """يجلب بيانات الـ OI لتاريخ معين"""
     url = f"{BASE_SNAP}/{symbol.upper()}"
-    status, j = _get(url, {"limit": 100})
+    status, j = _get(url, {"limit": 50})
     if status != 200 or j.get("status") != "OK":
         return None, j
     rows = [r for r in j.get("results", []) if r.get("details", {}).get("expiration_date") == expiry]
@@ -94,7 +94,7 @@ def make_pine(symbol, exp, price, top_calls, top_puts):
 
     title = f"Bassam OI[Lite] • Σ OI Levels | {symbol.upper()} | Exp {exp}"
     return f"""//@version=5
-indicator("{title}", overlay=true, max_lines_count=500, max_labels_count=500)
+indicator("{title}", overlay=true, max_lines_count=50, max_labels_count=50)
 
 // Auto-fetched from Polygon snapshot (Next Weekly)
 calls_strikes = array.from({fmt(top_calls)})
