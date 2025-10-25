@@ -201,7 +201,101 @@ if barstate.islast
     if mode == "Monthly"
         draw_side(monthly_calls_strikes, monthly_calls_pct, monthly_calls_iv, color.new(color.green, 0))
         draw_side(monthly_puts_strikes,  monthly_puts_pct,  monthly_puts_iv,  color.new(#b02727, 0))
-"""
+        // ========== ask group support ==========
+rb             = input.int(10,  "Period for Pivot Points", minval=10)
+prd            = input.int(284, "Loopback Period", minval=100, maxval=500)
+nump           = input.int(2,   "S/R strength", minval=1)
+ChannelW       = input.int(10,  "Channel Width %", minval=5)
+label_location = input.int(10,  "Label Location +-")
+linestyle      = input.string("Dashed","Line Style", options=["Solid","Dotted","Dashed"])
+LineColor      = input.color(color.new(color.blue,20), "Line Color")
+drawhl         = input.bool(true, "Draw Highest/Lowest Pivots in Period")
+showpp         = input.bool(true,"Show Pivot Points")
+
+ph = ta.pivothigh(high, rb, rb)
+pl = ta.pivotlow(low,  rb, rb)
+
+plotshape(showpp and not na(ph), title="PH", text="انعكاس", style=shape.labeldown, color=color.new(color.white,100), textcolor=color.red,  location=location.abovebar, offset=-rb)
+plotshape(showpp and not na(pl), title="PL", text="انعكاس", style=shape.labelup,   color=color.new(color.white,100), textcolor=color.lime, location=location.belowbar, offset=-rb)
+sr_levels  = array.new_float(21, na)
+prdhighest = ta.highest(high, prd)
+prdlowest  = ta.lowest(low,  prd)
+cwidth     = (prdhighest - prdlowest) * ChannelW / 100
+aas        = array.new_bool(41, true)
+var sr_lines = array.new_line(21, na)
+
+if not na(ph) or not na(pl)
+    for x = 0 to array.size(sr_lines) - 1
+        if not na(array.get(sr_lines, x))
+            line.delete(array.get(sr_lines, x))
+        array.set(sr_lines, x, na)
+
+    highestph = prdlowest
+    lowestpl  = prdhighest
+    countpp = 0
+
+    for x = 0 to prd
+        if na(close[x]) or countpp > 40
+            break
+        if not na(ph[x]) or not na(pl[x])
+            highestph := math.max(highestph, nz(ph[x], prdlowest), nz(pl[x], prdlowest))
+            lowestpl  := math.min(lowestpl,  nz(ph[x], prdhighest), nz(pl[x], prdhighest))
+            countpp += 1
+            if array.get(aas, countpp)
+                upl = (not na(ph[x]) ? high[x + rb] : low[x + rb]) + cwidth
+                dnl = (not na(ph[x]) ? high[x + rb] : low[x + rb]) - cwidth
+                tmp = array.new_bool(41, true)
+                cnt = 0
+                tpoint = 0
+                for xx = 0 to prd
+                    if na(close[xx]) or cnt > 40
+                        break
+                    if not na(ph[xx]) or not na(pl[xx])
+                        chg = false
+                        cnt += 1
+                        if array.get(aas, cnt)
+                            if not na(ph[xx]) and high[xx + rb] <= upl and high[xx + rb] >= dnl
+                                tpoint += 1
+                                chg := true
+                            if not na(pl[xx]) and low[xx + rb] <= upl and low[xx + rb] >= dnl
+                                tpoint += 1
+                                chg := true
+                        if chg and cnt < 41
+                            array.set(tmp, cnt, false)
+                if tpoint >= nump
+                    for g = 0 to 40
+                        if not array.get(tmp, g)
+                            array.set(aas, g, false)
+                    if not na(ph[x]) and countpp < 21
+                        array.set(sr_levels, countpp, high[x + rb])
+                    if not na(pl[x]) and countpp < 21
+                        array.set(sr_levels, countpp, low[x + rb])
+
+style = linestyle == "Solid" ? line.style_solid : linestyle == "Dotted" ? line.style_dotted : line.style_dashed
+for x = 0 to array.size(sr_levels) - 1
+    lvl = array.get(sr_levels, x)
+    if not na(lvl)
+        col = lvl < close ? color.new(color.lime, 0) : color.new(color.red, 0)
+        array.set(sr_lines, x, line.new(bar_index - 1, lvl, bar_index, lvl, color=col, width=1, style=style, extend=extend.both))
+
+// ✅ عرض اللابلز مرة واحدة لكل تحديث وليس لكل شمعة
+var label highestLabel = na
+var label lowestLabel  = na
+
+if drawhl
+    // حذف اللابلز القديمة فقط إذا تغيّر أعلى أو أدنى Pivot فعلاً
+    newHigh = ta.highest(high, prd)
+    newLow  = ta.lowest(low,  prd)
+
+    if na(highestLabel) or label.get_y(highestLabel) != newHigh
+        if not na(highestLabel)
+            label.delete(highestLabel)
+        highestLabel := label.new( x = bar_index + label_location, y = newHigh + (syminfo.mintick * 50), text = "Highest PH " + str.tostring(newHigh), color = color.new(color.silver, 0), textcolor = color.black, style = label.style_label_down)
+
+    if na(lowestLabel) or label.get_y(lowestLabel) != newLow
+        if not na(lowestLabel)
+            label.delete(lowestLabel)
+        lowestLabel := label.new( x = bar_index + label_location, y = newLow - (syminfo.mintick * 50), text = "Lowest PL " + str.tostring(newLow), color = color.new(color.silver, 0), textcolor = color.black, style = label.style_label_up )"""
     return Response(pine, mimetype="text/plain")
 
 #─────────────────────────────
