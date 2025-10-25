@@ -168,7 +168,7 @@ if syminfo.ticker == "{sym}"
 """
         output.append(code)
 
-    pine = f"""//@version=5
+    pine = //@version=5
 indicator("GEX PRO • SmartMode + IV% + AskGroup (240m)", overlay=true, max_lines_count=500, max_labels_count=500)
 mode = input.string("Weekly", "Expiry Mode", options=["Weekly","Monthly"], group="Settings")
 
