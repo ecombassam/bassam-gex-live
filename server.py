@@ -196,12 +196,9 @@ if syminfo.ticker == "{sym}"
 """
         blocks.append(block)
 
-    pine = (
-        f"""//@version=5
-indicator("GEX PRO • SmartMode + IV% + AskGroup (240m)", overlay=true, max_lines_count=500, max_labels_count=500)
+    pine = f"""//@version=5
+indicator("GEX PRO", overlay=true, max_lines_count=500, max_labels_count=500)
 mode = input.string("Weekly", "Expiry Mode", options=["Weekly","Monthly"], group="Settings")
-"""
-    )
 
 
 draw_side(_s, _p, _iv, _col) =>
