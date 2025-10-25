@@ -185,17 +185,23 @@ def all_pine():
         mc_s, mc_p, mc_iv = normalize_for_pine(data["monthly"]["calls"])
         mp_s, mp_p, mp_iv = normalize_for_pine(data["monthly"]["puts"])
 
-        block = f"""
+def to_pine_array(arr):
+    return ",".join(str(x) for x in arr)
+
+...
+
+block = f"""
 //========= {sym} =========
 if syminfo.ticker == "{sym}"
     title = "GEX PRO • " + mode + " | {sym}"
     if mode == "Weekly"
-        draw_side(array.from({wc_s}), array.from({wc_p}), array.from({wc_iv}), color.lime)
-        draw_side(array.from({wp_s}), array.from({wp_p}), array.from({wp_iv}), color.red)
+        draw_side(array.from({to_pine_array(wc_s)}), array.from({to_pine_array(wc_p)}), array.from({to_pine_array(wc_iv)}), color.lime)
+        draw_side(array.from({to_pine_array(wp_s)}), array.from({to_pine_array(wp_p)}), array.from({to_pine_array(wp_iv)}), color.red)
     if mode == "Monthly"
-        draw_side(array.from({mc_s}), array.from({mc_p}), array.from({mc_iv}), color.new(color.green, 0))
-        draw_side(array.from({mp_s}), array.from({mp_p}), array.from({mp_iv}), color.new(#b02727, 0))
+        draw_side(array.from({to_pine_array(mc_s)}), array.from({to_pine_array(mc_p)}), array.from({to_pine_array(mc_iv)}), color.new(color.green, 0))
+        draw_side(array.from({to_pine_array(mp_s)}), array.from({to_pine_array(mp_p)}), array.from({to_pine_array(mp_iv)}), color.new(#b02727, 0))
 """
+
         blocks.append(block)
 
     # ===== بناء كود Pine الكامل =====
