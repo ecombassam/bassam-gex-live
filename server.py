@@ -171,12 +171,14 @@ def get_symbol_data(symbol):
 # ============================================================
 @app.route("/all/pine")
 def all_pine():
-    if not POLY_KEY: return _err("Missing POLYGON_API_KEY", 401)
+    if not POLY_KEY:
+        return _err("Missing POLYGON_API_KEY", 401)
 
     blocks = []
     for sym in SYMBOLS:
         data = get_symbol_data(sym)
-        if not data: continue
+        if not data:
+            continue
 
         wc_s, wc_p, wc_iv = normalize_for_pine(data["weekly"]["calls"])
         wp_s, wp_p, wp_iv = normalize_for_pine(data["weekly"]["puts"])
@@ -196,9 +198,9 @@ if syminfo.ticker == "{sym}"
 """
         blocks.append(block)
 
-        title = f"GEX PRO • SmartMode + IV% | {symbol.upper()}"
+    # ===== بناء كود Pine الكامل =====
     pine = f"""//@version=5
-indicator("{title}", overlay=true, max_lines_count=500, max_labels_count=500)
+indicator("GEX PRO • SmartMode + IV% + AskGroup (240m)", overlay=true, max_lines_count=500, max_labels_count=500)
 mode = input.string("Weekly", "Expiry Mode", options=["Weekly","Monthly"], group="Settings")
 
 draw_side(_s, _p, _iv, _col) =>
@@ -320,6 +322,36 @@ if drawhl
 
 
 # ============================================================
+# /all/json endpoint
+# ============================================================
+@app.route("/all/json")
+def all_json():
+    if not POLY_KEY:
+        return _err("Missing POLYGON_API_KEY", 401)
+    all_data = {}
+    for sym in SYMBOLS:
+        data = get_symbol_data(sym)
+        if data:
+            all_data[sym] = {
+                "weekly": {
+                    "calls": [{"strike": s, "oi": oi, "iv": iv} for (s, oi, iv) in data["weekly"]["calls"]],
+                    "puts":  [{"strike": s, "oi": oi, "iv": iv} for (s, oi, iv) in data["weekly"]["puts"]],
+                },
+                "monthly": {
+                    "calls": [{"strike": s, "oi": oi, "iv": iv} for (s, oi, iv) in data["monthly"]["calls"]],
+                    "puts":  [{"strike": s, "oi": oi, "iv": iv} for (s, oi, iv) in data["monthly"]["puts"]],
+                },
+                "timestamp": data["timestamp"]
+            }
+    return jsonify({
+        "status": "OK",
+        "symbols": SYMBOLS,
+        "updated": dt.datetime.utcnow().isoformat() + "Z",
+        "data": all_data
+    })
+
+
+# ============================================================
 # Root Info
 # ============================================================
 @app.route("/")
@@ -330,9 +362,11 @@ def home():
         "author": "Bassam GEX PRO v4.4 – SmartCache Edition",
         "interval": "240m ثابت",
         "update": "كل ساعة تلقائيًا",
-        "usage": {"all_pine": "/all/pine"},
+        "usage": {"all_pine": "/all/pine", "all_json": "/all/json"},
         "cache_items": len(CACHE)
     })
 
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8000)))
+
