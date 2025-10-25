@@ -29,7 +29,7 @@ def _get(url, params=None):
 def fetch_weekly_oi(symbol):
     """يجلب فقط العقود الأسبوعية من بوليغون"""
     url = f"{BASE_SNAP}/{symbol.upper()}"
-    status, j = _get(url, {"limit": 500})
+    status, j = _get(url, {"limit": 50})
     if status != 200 or j.get("status") != "OK":
         return None, None, j
 
@@ -91,7 +91,7 @@ def make_pine(symbol, exp, price, top_calls, top_puts):
 
     title = f"Bassam OI[Lite] • Weekly Credit Spread Walls | {symbol.upper()} | Exp {exp}"
     return f"""//@version=5
-indicator("{title}", overlay=true, max_lines_count=500, max_labels_count=500)
+indicator("{title}", overlay=true, max_lines_count=50, max_labels_count=50)
 
 // Auto-fetched from Polygon snapshot (Weekly)
 calls_strikes = array.from({fmt(top_calls)})
