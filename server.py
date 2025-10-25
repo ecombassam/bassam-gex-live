@@ -140,7 +140,8 @@ def normalize_for_pine(data):
 
 
 def to_pine_array(arr):
-    return ",".join(str(x) for x in arr)
+    return ",".join(f"{float(x):.6f}" for x in arr if x is not None)
+
 
 # ============================================================
 # تحديث البيانات المخزّنة
