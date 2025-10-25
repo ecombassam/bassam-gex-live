@@ -203,8 +203,7 @@ if syminfo.ticker == "{sym}"
         draw_side(array.from({to_pine_array(mp_s)}), array.from({to_pine_array(mp_p)}), array.from({to_pine_array(mp_iv)}), color.new(#b02727, 0))
 
  """
-
-        blocks.append(block)
+blocks.append(block)
 
     # ===== بناء كود Pine الكامل =====
     pine = f"""//@version=5
