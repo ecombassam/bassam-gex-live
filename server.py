@@ -247,9 +247,10 @@ baseColor = input.color(color.new(color.yellow, 0), "Neutral Zone Color", group=
 zoneWidth = input.float(1.0, "Zone Width %", minval=0.2, maxval=5.0, group="GEX HVL")
 
 if showHVL
-    src_iv  = mode == "Weekly"  ? wc_iv : mc_iv
-    src_str = mode == "Weekly"  ? wc_s  : mc_s
-    src_p   = mode == "Weekly"  ? wc_p  : mc_p
+    src_iv  = mode == "Weekly"  ? array.from(0.0) : array.from(0.0)
+    src_str = mode == "Weekly"  ? array.from(0.0) : array.from(0.0)
+    src_p   = mode == "Weekly"  ? array.from(0.0) : array.from(0.0)
+
     max_iv = 0.0
     hvl_y  = na
     idx    = na
