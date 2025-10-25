@@ -115,6 +115,56 @@ def json_route(symbol):
             "put_walls": [{"strike": s, "oi": oi} for s, oi in m_puts]
         }
     })
+# ─────────────────────────────
+@app.route("/<symbol>/pine")
+def pine_route(symbol):
+    """يُولّد كود PineScript مباشرة من نفس بيانات /json"""
+    if not POLY_KEY:
+        return _err("Missing POLYGON_API_KEY", 401)
+    rows = fetch_all(symbol)
+    expiries = find_expiries(rows)
+    if not expiries:
+        return _err("No upcoming expiries found", 404, {"why": "empty list"}, symbol)
+
+    exp_week = expiries[0]
+    price, w_calls, w_puts = analyze_oi(rows, exp_week, 3)
+    exp_month = next((d for d in expiries if d.endswith("-28") or d.endswith("-29") or d.endswith("-30") or d.endswith("-31")), expiries[-1])
+    _, m_calls, m_puts = analyze_oi(rows, exp_month, 6)
+
+    title = f"Bassam OI[Pro] • Weekly+Monthly | {symbol.upper()}"
+    pine_code = f"""//@version=5
+indicator("{title}", overlay=true, max_lines_count=500, max_labels_count=500)
+
+// السعر الحالي
+price = {round(price, 2) if price else 'na'}
+
+// Weekly
+weekly_calls = array.from({','.join(str(s) for s, _ in w_calls)})
+weekly_puts  = array.from({','.join(str(s) for s, _ in w_puts)})
+
+// Monthly
+monthly_calls = array.from({','.join(str(s) for s, _ in m_calls)})
+monthly_puts  = array.from({','.join(str(s) for s, _ in m_puts)})
+
+show_weekly = input.bool(true, "Show Weekly Levels")
+show_monthly = input.bool(false, "Show Monthly Levels")
+
+draw_levels(_arr, _col) =>
+    for i = 0 to array.size(_arr) - 1
+        y = array.get(_arr, i)
+        line.new(bar_index - 5, y, bar_index + 120, y, color=_col, width=6)
+
+if barstate.islast
+    if show_weekly
+        draw_levels(weekly_calls, color.new(color.lime, 0))
+        draw_levels(weekly_puts, color.new(color.red, 0))
+    if show_monthly
+        draw_levels(monthly_calls, color.new(color.green, 40))
+        draw_levels(monthly_puts, color.new(color.purple, 40))
+    line.new(bar_index - 10, price, bar_index + 50, price, color=color.aqua, width=2)
+"""
+
+    return Response(pine_code, mimetype="text/plain")
 
 @app.route("/")
 def home():
