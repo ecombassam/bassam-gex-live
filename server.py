@@ -237,10 +237,12 @@ draw_side(_s, _p, _iv, _col) =>
         array.push(labelsArr, labelRef)
 
 // ====== HVL Smart Zone (Gamma Direction Aware) ======
-var line  hvl_top   = na
-var line  hvl_bot   = na
-var label hvl_label = na
-var box   hvl_box   = na
+var float[] wc_iv = array.from({to_pine_array(wc_iv)})
+var float[] mc_iv = array.from({to_pine_array(mc_iv)})
+var float[] wc_s  = array.from({to_pine_array(wc_s)})
+var float[] mc_s  = array.from({to_pine_array(mc_s)})
+var float[] wc_p  = array.from({to_pine_array(wc_p)})
+var float[] mc_p  = array.from({to_pine_array(mc_p)})
 
 showHVL   = input.bool(true, "Show HVL Smart Zone", group="GEX HVL")
 baseColor = input.color(color.new(color.yellow, 0), "Neutral Zone Color", group="GEX HVL")
