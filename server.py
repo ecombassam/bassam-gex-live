@@ -205,6 +205,7 @@ if syminfo.ticker == "{sym}"
     blocks.append(block)
 
 
+
     # ===== بناء كود Pine الكامل =====
     pine = f"""//@version=5
 indicator("GEX PRO • SmartMode + IV% + AskGroup (240m)", overlay=true, max_lines_count=500, max_labels_count=500)
