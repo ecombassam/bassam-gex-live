@@ -237,23 +237,27 @@ draw_side(_s, _p, _iv, _col) =>
         array.push(labelsArr, labelRef)
 
 // ====== HVL Smart Zone (Gamma Direction Aware) ======
-var line hvl_top = na
-var line hvl_bot = na
+var line  hvl_top   = na
+var line  hvl_bot   = na
 var label hvl_label = na
-var box hvl_box = na
+var box   hvl_box   = na
 
 showHVL   = input.bool(true, "Show HVL Smart Zone", group="GEX HVL")
 baseColor = input.color(color.new(color.yellow, 0), "Neutral Zone Color", group="GEX HVL")
 zoneWidth = input.float(1.0, "Zone Width %", minval=0.2, maxval=5.0, group="GEX HVL")
 
+// ✅ تعريف المتغيرات بنوعها من البداية
+float max_iv = 0.0
+float hvl_y  = na
+int   idx    = na
+
 if showHVL
+    // مصفوفات افتراضية (سيتم استبدالها تلقائياً من السيرفر)
     src_iv  = mode == "Weekly"  ? array.from(0.0) : array.from(0.0)
     src_str = mode == "Weekly"  ? array.from(0.0) : array.from(0.0)
     src_p   = mode == "Weekly"  ? array.from(0.0) : array.from(0.0)
 
-    max_iv = 0.0
-    hvl_y  = na
-    idx    = na
+    // تحديد أعلى IV
     for i = 0 to array.size(src_iv) - 1
         iv = array.get(src_iv, i)
         if iv > max_iv
@@ -261,16 +265,20 @@ if showHVL
             hvl_y  := array.get(src_str, i)
             idx    := i
 
+    // إذا وُجدت قيمة واضحة
     if not na(hvl_y)
         up_val = na(idx) or idx + 1 >= array.size(src_p) ? na : array.get(src_p, idx + 1)
         dn_val = na(idx) or idx - 1 < 0 ? na : array.get(src_p, idx - 1)
         colHVL = baseColor
+
+        // تحديد الاتجاه اللوني
         if not na(up_val) and not na(dn_val)
             if up_val > dn_val
                 colHVL := color.new(color.lime, 0)
             else if up_val < dn_val
                 colHVL := color.new(color.red, 0)
 
+        // حذف القديم
         if not na(hvl_top)
             line.delete(hvl_top)
         if not na(hvl_bot)
@@ -280,21 +288,30 @@ if showHVL
         if not na(hvl_box)
             box.delete(hvl_box)
 
+        // رسم المنطقة الجديدة
         hvl_top_y = hvl_y * (1 + zoneWidth / 100)
         hvl_bot_y = hvl_y * (1 - zoneWidth / 100)
 
-        hvl_box := box.new(left=bar_index - 5, top=hvl_top_y, right=bar_index + 5, bottom=hvl_bot_y,
-                           bgcolor=color.new(colHVL, 85), border_color=color.new(colHVL, 50))
+        hvl_box := box.new(
+            left = bar_index - 5, top = hvl_top_y,
+            right = bar_index + 5, bottom = hvl_bot_y,
+            bgcolor = color.new(colHVL, 85),
+            border_color = color.new(colHVL, 50)
+        )
         hvl_top := line.new(bar_index - 10, hvl_top_y, bar_index + 10, hvl_top_y,
-                            extend=extend.both, color=color.new(colHVL, 0), width=1, style=line.style_dotted)
+                            extend = extend.both, color = color.new(colHVL, 0),
+                            width = 1, style = line.style_dotted)
         hvl_bot := line.new(bar_index - 10, hvl_bot_y, bar_index + 10, hvl_bot_y,
-                            extend=extend.both, color=color.new(colHVL, 0), width=1, style=line.style_dotted)
+                            extend = extend.both, color = color.new(colHVL, 0),
+                            width = 1, style = line.style_dotted)
         hvl_label := label.new(bar_index + 5, hvl_y,
             "HVL " + str.tostring(hvl_y, "#.##") +
-            (colHVL == color.lime ? "  (🟢 )" : colHVL == color.red ? "  (🔴 )" : "  (🟡 )") +
+            (colHVL == color.lime ? "  (🟢 )" :
+             colHVL == color.red ? "  (🔴 )" : "  (🟡 )") +
             "  ±" + str.tostring(zoneWidth, "#.##") + "%",
-            style=label.style_label_left,
-            textcolor=color.black, color=colHVL, size=size.small)
+            style = label.style_label_left,
+            textcolor = color.black, color = colHVL, size = size.small)
+
 
 
 {''.join(blocks)}
