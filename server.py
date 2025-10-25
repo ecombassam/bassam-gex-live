@@ -1,4 +1,4 @@
-# server.py — Bassam OI[Pro] v1.8 – Weekly & Monthly Credit Spread Analyzer
+# server.py — Bassam OI[Pro] v1.9 – Gradient Power Bars + Clean Labels
 import os, json, datetime as dt, requests
 from flask import Flask, jsonify, Response, request
 
@@ -61,8 +61,6 @@ def find_next_expiry(symbol, mode):
     if not expiries:
         return None, {"why": "no upcoming expiry"}, None
 
-    # الأسبوعية: تواريخ تنتهي خلال 7 أيام
-    # الشهرية: تواريخ آخر جمعة من الشهر فقط
     if mode == "weekly":
         exp_target = expiries[0]
     else:  # monthly
@@ -115,7 +113,7 @@ def make_pine(symbol, exp, price, top_calls, top_puts, mode):
         base = arr[0][1]
         return ",".join(str(round(x[1] / base, 2)) for x in arr)
 
-    title = f"Bassam OI[Pro] • {'Weekly' if mode=='weekly' else 'Monthly'} | {symbol.upper()} | Exp {exp}"
+    title = f"Bassam OI[Pro] • {'Weekly' if mode=='weekly' else 'Monthly'} Gradient Levels | {symbol.upper()} | Exp {exp}"
     return f"""//@version=5
 indicator("{title}", overlay=true, max_lines_count=500, max_labels_count=500)
 
@@ -125,24 +123,31 @@ calls_pct     = array.from({pct(top_calls)})
 puts_strikes  = array.from({fmt(top_puts)})
 puts_pct      = array.from({pct(top_puts)})
 
+// دالة لتوليد تدرج اللون
+f_grad(_base, _pwr) =>
+    _alpha = int(100 - (_pwr * 90))  // كلما زادت القوة، قلّ الشفافية
+    color.new(_base, _alpha)
+
 if barstate.islast
-    // 🟩 CALL Walls
+    // 🟩 CALL Walls بتدرج القوة
     for i = 0 to array.size(calls_strikes) - 1
         y = array.get(calls_strikes, i)
         p = array.get(calls_pct, i)
+        col = f_grad(color.lime, p)
         h = int(math.max(8, p * 150))
-        line.new(bar_index - 5, y, bar_index + h, y, color=color.new(color.lime, 0), width=8)
-        label.new(bar_index + h, y, "CALL " + str.tostring(y) + "\\n" + str.tostring(math.round(p * 100)) + "% OI", 
-            style=label.style_label_left, textcolor=color.white, color=color.new(color.lime, 70))
+        line.new(bar_index - 5, y, bar_index + h, y, color=col, width=8)
+        label.new(bar_index + h, y, str.tostring(math.round(p * 100)) + "%", 
+            style=label.style_label_left, textcolor=color.white, color=color.new(col, 70))
 
-    // 🟥 PUT Walls
+    // 🟥 PUT Walls بتدرج القوة
     for i = 0 to array.size(puts_strikes) - 1
         y = array.get(puts_strikes, i)
         p = array.get(puts_pct, i)
+        col = f_grad(color.red, p)
         h = int(math.max(8, p * 150))
-        line.new(bar_index - 5, y, bar_index + h, y, color=color.new(color.red, 0), width=8)
-        label.new(bar_index + h, y, "PUT " + str.tostring(y) + "\\n" + str.tostring(math.round(p * 100)) + "% OI",
-            style=label.style_label_left, textcolor=color.white, color=color.new(color.red, 70))
+        line.new(bar_index - 5, y, bar_index + h, y, color=col, width=8)
+        label.new(bar_index + h, y, str.tostring(math.round(p * 100)) + "%", 
+            style=label.style_label_left, textcolor=color.white, color=color.new(col, 70))
 
     // 💎 السعر الحالي
     line.new(bar_index - 10, {price}, bar_index + 50, {price}, color=color.new(color.aqua, 0), width=2)
@@ -190,7 +195,7 @@ def home():
             "weekly_pine": "/AAPL/pine?mode=weekly",
             "monthly_pine": "/AAPL/pine?mode=monthly"
         },
-        "author": "Bassam OI[Pro] v1.8 – Weekly & Monthly Analyzer"
+        "author": "Bassam OI[Pro] v1.9 – Gradient Power Bars"
     })
 
 if __name__ == "__main__":
