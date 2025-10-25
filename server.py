@@ -1,10 +1,11 @@
-# server.py — Bassam OI[Lite] v1.3 – Weekly Credit Spread Analyzer (Fixed Expiry 31/10/2025)
+# server.py — Bassam OI[Lite] v1.4 – Smart Weekly Credit Spread Analyzer (Auto Expiry)
 import os, json, datetime as dt, requests
 from flask import Flask, jsonify, Response
 
 app = Flask(__name__)
 POLY_KEY  = (os.environ.get("POLYGON_API_KEY") or "").strip()
 BASE_SNAP = "https://api.polygon.io/v3/snapshot/options"
+TODAY     = dt.date.today
 
 # ─────────────────────────────
 def _err(msg, http=502, data=None, sym=None):
@@ -25,26 +26,39 @@ def _get(url, params=None):
         return r.status_code, {"error": "Invalid JSON"}
 
 # ─────────────────────────────
-def fetch_weekly_oi(symbol, expiry_fixed="2025-10-31"):
-    """يجلب فقط العقود من تاريخ انتهاء ثابت"""
+def find_next_weekly(symbol):
+    """يبحث عن أقرب أسبوعية قادمة"""
     url = f"{BASE_SNAP}/{symbol.upper()}"
     status, j = _get(url, {"limit": 50})
     if status != 200 or j.get("status") != "OK":
-        return None, j
-
+        return None, {"why": "invalid response", "status": j.get("status")}
+    
     rows = j.get("results") or []
     if not rows:
         return None, {"why": "no option data"}
 
-    # فلترة حسب الاكسبايري المطلوب
-    filtered = [r for r in rows if r.get("details", {}).get("expiration_date") == expiry_fixed]
-    if not filtered:
-        return None, {"why": f"no contracts for expiry {expiry_fixed}"}
-    return filtered, None
+    today = TODAY().isoformat()
+    expiries = sorted({r.get("details", {}).get("expiration_date") for r in rows if r.get("details", {}).get("expiration_date")})
+    next_exp = next((d for d in expiries if d >= today), None)
+    if not next_exp:
+        return None, {"why": "no upcoming expiry"}
+    return next_exp, None
+
+# ─────────────────────────────
+def fetch_oi_for_expiry(symbol, expiry):
+    """يجلب بيانات الـ OI لتاريخ معين"""
+    url = f"{BASE_SNAP}/{symbol.upper()}"
+    status, j = _get(url, {"limit": 100})
+    if status != 200 or j.get("status") != "OK":
+        return None, j
+    rows = [r for r in j.get("results", []) if r.get("details", {}).get("expiration_date") == expiry]
+    if not rows:
+        return None, {"why": f"no contracts for {expiry}"}
+    return rows, None
 
 # ─────────────────────────────
 def analyze_oi(rows):
-    """يحسب أعلى 3 CALL وأعلى 3 PUT"""
+    """يحسب أقوى 3 مستويات CALL و PUT حسب الـ OI"""
     price = None
     for r in rows:
         p = r.get("underlying_asset", {}).get("price")
@@ -65,7 +79,7 @@ def analyze_oi(rows):
         elif ctype == "put":
             puts.append((strike, oi))
 
-    # أقوى 3 مستويات حسب OI
+    # ترتيب تنازلي حسب الـ OI
     top_calls = sorted(calls, key=lambda x: x[1], reverse=True)[:3]
     top_puts  = sorted(puts, key=lambda x: x[1], reverse=True)[:3]
     return price, top_calls, top_puts
@@ -82,7 +96,7 @@ def make_pine(symbol, exp, price, top_calls, top_puts):
     return f"""//@version=5
 indicator("{title}", overlay=true, max_lines_count=500, max_labels_count=500)
 
-// Auto-fetched from Polygon snapshot (Fixed Expiry)
+// Auto-fetched from Polygon snapshot (Next Weekly)
 calls_strikes = array.from({fmt(top_calls)})
 calls_pct     = array.from({pct(top_calls)})
 puts_strikes  = array.from({fmt(top_puts)})
@@ -113,24 +127,30 @@ if barstate.islast
 def pine(symbol):
     if not POLY_KEY:
         return _err("Missing POLYGON_API_KEY", 401)
-    rows, err = fetch_weekly_oi(symbol)
-    if err:
-        return _err("Failed to get weekly OI data", 502, err)
+    exp, e = find_next_weekly(symbol)
+    if e:
+        return _err("Failed to find next weekly expiry", 502, e, symbol)
+    rows, e2 = fetch_oi_for_expiry(symbol, exp)
+    if e2:
+        return _err("Failed to fetch OI data", 502, e2, symbol)
     price, top_calls, top_puts = analyze_oi(rows)
-    pine_code = make_pine(symbol, "2025-10-31", price, top_calls, top_puts)
+    pine_code = make_pine(symbol, exp, price, top_calls, top_puts)
     return Response(pine_code, mimetype="text/plain")
 
 @app.route("/<symbol>/json")
 def json_route(symbol):
     if not POLY_KEY:
         return _err("Missing POLYGON_API_KEY", 401)
-    rows, err = fetch_weekly_oi(symbol)
-    if err:
-        return _err("Failed to get weekly OI data", 502, err)
+    exp, e = find_next_weekly(symbol)
+    if e:
+        return _err("Failed to find next weekly expiry", 502, e, symbol)
+    rows, e2 = fetch_oi_for_expiry(symbol, exp)
+    if e2:
+        return _err("Failed to fetch OI data", 502, e2, symbol)
     price, top_calls, top_puts = analyze_oi(rows)
     return jsonify({
         "symbol": symbol.upper(),
-        "expiry": "2025-10-31",
+        "expiry": exp,
         "price": round(price, 2) if price else None,
         "call_walls": [{"strike": s, "oi": oi} for s, oi in top_calls],
         "put_walls": [{"strike": s, "oi": oi} for s, oi in top_puts]
@@ -144,7 +164,7 @@ def home():
             "example_pine": "/AAPL/pine",
             "example_json": "/AAPL/json"
         },
-        "author": "Bassam OI[Lite] – Weekly Credit Spread Analyzer (v1.3)"
+        "author": "Bassam OI[Lite] – Smart Weekly Credit Spread Analyzer (v1.4)"
     })
 
 if __name__ == "__main__":
