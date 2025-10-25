@@ -307,7 +307,7 @@ if showHVL
             bgcolor = color.new(colHVL, 85),
             border_color = color.new(colHVL, 50)
         )
-...
+
 
         hvl_box := box.new(left = bar_index - 5, top = hvl_top_y, right = bar_index + 5, bottom = hvl_bot_y,
                            bgcolor = color.new(colHVL, 85), border_color = color.new(colHVL, 50))
@@ -324,7 +324,7 @@ if showHVL
             "  ±" + str.tostring(zoneWidth, "#.##") + "%",
             style = label.style_label_left,
             textcolor = color.black, color = colHVL, size = size.small)
-"""
+
 
 {''.join(blocks)}
 
