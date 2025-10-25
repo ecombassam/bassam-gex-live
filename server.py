@@ -1,6 +1,6 @@
-# server.py — Bassam OI[Pro] v1.7 – Smart Weekly Credit Spread Analyzer (Top 3 CALLs & PUTs ±20%)
+# server.py — Bassam OI[Pro] v1.8 – Weekly & Monthly Credit Spread Analyzer
 import os, json, datetime as dt, requests
-from flask import Flask, jsonify, Response
+from flask import Flask, jsonify, Response, request
 
 app = Flask(__name__)
 POLY_KEY  = (os.environ.get("POLYGON_API_KEY") or "").strip()
@@ -30,7 +30,7 @@ def fetch_all(symbol):
     """يجلب جميع صفحات snapshot بحد 50"""
     url = f"{BASE_SNAP}/{symbol.upper()}"
     cursor, all_rows = None, []
-    for _ in range(10):  # بحد أقصى 10 صفحات
+    for _ in range(10):
         params = {"greeks": "true", "limit": 50}
         if cursor:
             params["cursor"] = cursor
@@ -46,11 +46,11 @@ def fetch_all(symbol):
     return all_rows
 
 # ─────────────────────────────
-def find_next_weekly(symbol):
-    """يبحث عن أقرب أسبوعية قادمة"""
+def find_next_expiry(symbol, mode):
+    """يحدد أقرب أسبوعية أو شهرية حسب نوع الاستراتيجية"""
     rows = fetch_all(symbol)
     if not rows:
-        return None, {"why": "no option data"}
+        return None, {"why": "no option data"}, None
 
     today = TODAY().isoformat()
     expiries = sorted({
@@ -59,17 +59,21 @@ def find_next_weekly(symbol):
     })
     expiries = [d for d in expiries if d >= today]
     if not expiries:
-        return None, {"why": "no upcoming expiry"}
+        return None, {"why": "no upcoming expiry"}, None
 
-    next_exp = expiries[0]
-    return next_exp, rows
+    # الأسبوعية: تواريخ تنتهي خلال 7 أيام
+    # الشهرية: تواريخ آخر جمعة من الشهر فقط
+    if mode == "weekly":
+        exp_target = expiries[0]
+    else:  # monthly
+        exp_target = next((d for d in expiries if d.endswith("-28") or d.endswith("-29") or d.endswith("-30") or d.endswith("-31")), expiries[-1])
+
+    return exp_target, None, rows
 
 # ─────────────────────────────
-def analyze_oi(rows, expiry):
-    """يحسب أقوى 3 CALL و 3 PUT حول السعر ±20%"""
+def analyze_oi(rows, expiry, mode):
+    """يحسب أقوى مستويات CALL و PUT حسب النمط"""
     rows = [r for r in rows if r.get("details", {}).get("expiration_date") == expiry]
-
-    # 🔹 تحديد السعر الحالي
     price = None
     for r in rows:
         p = r.get("underlying_asset", {}).get("price")
@@ -79,7 +83,6 @@ def analyze_oi(rows, expiry):
     if not price:
         return None, [], []
 
-    # 🔹 فلترة العقود ±20% حول السعر
     low, high = price * 0.8, price * 1.2
     rows = [
         r for r in rows
@@ -99,20 +102,20 @@ def analyze_oi(rows, expiry):
         elif ctype == "put":
             puts.append((strike, oi))
 
-    # 🔹 اختيار أقوى 3 مستويات من كل نوع
-    top_calls = sorted(calls, key=lambda x: x[1], reverse=True)[:3]
-    top_puts  = sorted(puts, key=lambda x: x[1], reverse=True)[:3]
+    limit = 3 if mode == "weekly" else 6
+    top_calls = sorted(calls, key=lambda x: x[1], reverse=True)[:limit]
+    top_puts  = sorted(puts, key=lambda x: x[1], reverse=True)[:limit]
     return price, top_calls, top_puts
 
 # ─────────────────────────────
-def make_pine(symbol, exp, price, top_calls, top_puts):
+def make_pine(symbol, exp, price, top_calls, top_puts, mode):
     def fmt(arr): return ",".join(str(round(x[0], 2)) for x in arr)
     def pct(arr):
         if not arr: return "1.0"
         base = arr[0][1]
         return ",".join(str(round(x[1] / base, 2)) for x in arr)
 
-    title = f"Bassam OI[Pro] • Top OI Walls ±20% | {symbol.upper()} | Exp {exp}"
+    title = f"Bassam OI[Pro] • {'Weekly' if mode=='weekly' else 'Monthly'} | {symbol.upper()} | Exp {exp}"
     return f"""//@version=5
 indicator("{title}", overlay=true, max_lines_count=500, max_labels_count=500)
 
@@ -151,25 +154,26 @@ if barstate.islast
 def pine(symbol):
     if not POLY_KEY:
         return _err("Missing POLYGON_API_KEY", 401)
-    exp, rows_or_err = find_next_weekly(symbol)
-    if not exp:
-        return _err("Failed to find next weekly expiry", 502, rows_or_err, symbol)
-    rows = rows_or_err
-    price, top_calls, top_puts = analyze_oi(rows, exp)
-    pine_code = make_pine(symbol, exp, price, top_calls, top_puts)
+    mode = request.args.get("mode", "weekly").lower()
+    exp, err, rows = find_next_expiry(symbol, mode)
+    if err:
+        return _err("Failed to find expiry", 502, err, symbol)
+    price, top_calls, top_puts = analyze_oi(rows, exp, mode)
+    pine_code = make_pine(symbol, exp, price, top_calls, top_puts, mode)
     return Response(pine_code, mimetype="text/plain")
 
 @app.route("/<symbol>/json")
 def json_route(symbol):
     if not POLY_KEY:
         return _err("Missing POLYGON_API_KEY", 401)
-    exp, rows_or_err = find_next_weekly(symbol)
-    if not exp:
-        return _err("Failed to find next weekly expiry", 502, rows_or_err, symbol)
-    rows = rows_or_err
-    price, top_calls, top_puts = analyze_oi(rows, exp)
+    mode = request.args.get("mode", "weekly").lower()
+    exp, err, rows = find_next_expiry(symbol, mode)
+    if err:
+        return _err("Failed to find expiry", 502, err, symbol)
+    price, top_calls, top_puts = analyze_oi(rows, exp, mode)
     return jsonify({
         "symbol": symbol.upper(),
+        "mode": mode,
         "expiry": exp,
         "price": round(price, 2) if price else None,
         "call_walls": [{"strike": s, "oi": oi} for s, oi in top_calls],
@@ -181,10 +185,12 @@ def home():
     return jsonify({
         "status": "OK ✅",
         "usage": {
-            "example_pine": "/AAPL/pine",
-            "example_json": "/AAPL/json"
+            "weekly_json": "/AAPL/json?mode=weekly",
+            "monthly_json": "/AAPL/json?mode=monthly",
+            "weekly_pine": "/AAPL/pine?mode=weekly",
+            "monthly_pine": "/AAPL/pine?mode=monthly"
         },
-        "author": "Bassam OI[Pro] – Smart Weekly Credit Spread Analyzer (v1.7, ±20%)"
+        "author": "Bassam OI[Pro] v1.8 – Weekly & Monthly Analyzer"
     })
 
 if __name__ == "__main__":
