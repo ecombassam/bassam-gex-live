@@ -245,6 +245,12 @@ var float[] mc_s  = array.from({to_pine_array(mc_s)})
 var float[] wc_p  = array.from({to_pine_array(wc_p)})
 var float[] mc_p  = array.from({to_pine_array(mc_p)})
 
+// ====== HVL Smart Zone (Gamma Direction Aware) ======
+var line  hvl_top   = na
+var line  hvl_bot   = na
+var label hvl_label = na
+var box   hvl_box   = na
+
 showHVL   = input.bool(true, "Show HVL Smart Zone", group="GEX HVL")
 baseColor = input.color(color.new(color.yellow, 0), "Neutral Zone Color", group="GEX HVL")
 zoneWidth = input.float(1.0, "Zone Width %", minval=0.2, maxval=5.0, group="GEX HVL")
@@ -301,6 +307,10 @@ if showHVL
             bgcolor = color.new(colHVL, 85),
             border_color = color.new(colHVL, 50)
         )
+...
+
+        hvl_box := box.new(left = bar_index - 5, top = hvl_top_y, right = bar_index + 5, bottom = hvl_bot_y,
+                           bgcolor = color.new(colHVL, 85), border_color = color.new(colHVL, 50))
         hvl_top := line.new(bar_index - 10, hvl_top_y, bar_index + 10, hvl_top_y,
                             extend = extend.both, color = color.new(colHVL, 0),
                             width = 1, style = line.style_dotted)
@@ -314,8 +324,7 @@ if showHVL
             "  ±" + str.tostring(zoneWidth, "#.##") + "%",
             style = label.style_label_left,
             textcolor = color.black, color = colHVL, size = size.small)
-
-
+"""
 
 {''.join(blocks)}
 
