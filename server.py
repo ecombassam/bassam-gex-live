@@ -185,8 +185,8 @@ draw_side(_strikes, _pcts, _ivs, _base_col) =>
         iv = array.get(_ivs, i)
         alpha   = 90 - int(p * 70)
         bar_col = color.new(_base_col, alpha)
-        bar_len = int(math.max(10, p * 120))
-        line.new(bar_index - 5, y, bar_index + bar_len - 5, y, color=bar_col, width=6)
+        bar_len = int(math.max(10, p * 50))
+        line.new(bar_index + 3, y, bar_index + bar_len - 12, y, color=bar_col, width=6)
         label.new(
      bar_index + bar_len + 1, y,
      str.tostring(p*100, "#.##") + "%  |  IV " + str.tostring(iv*100, "#.##") + "%",
@@ -200,7 +200,7 @@ if barstate.islast
         draw_side(weekly_puts_strikes,  weekly_puts_pct,  weekly_puts_iv,  color.red)
     if mode == "Monthly"
         draw_side(monthly_calls_strikes, monthly_calls_pct, monthly_calls_iv, color.new(color.green, 0))
-        draw_side(monthly_puts_strikes,  monthly_puts_pct,  monthly_puts_iv,  color.new(color.purple, 0))
+        draw_side(monthly_puts_strikes,  monthly_puts_pct,  monthly_puts_iv,  color.new(#b02727, 0))
 """
     return Response(pine, mimetype="text/plain")
 
