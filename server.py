@@ -1,6 +1,6 @@
-# server.py — Bassam OI[Pro] v1.9 – Gradient Power Bars + Clean Labels
+# server.py — Bassam OI[Pro] v2.0 – Weekly + Monthly Combined JSON
 import os, json, datetime as dt, requests
-from flask import Flask, jsonify, Response, request
+from flask import Flask, jsonify, Response
 
 app = Flask(__name__)
 POLY_KEY  = (os.environ.get("POLYGON_API_KEY") or "").strip()
@@ -27,11 +27,11 @@ def _get(url, params=None):
 
 # ─────────────────────────────
 def fetch_all(symbol):
-    """يجلب جميع صفحات snapshot بحد 50"""
+    """يجلب جميع صفحات snapshot (حد 50)"""
     url = f"{BASE_SNAP}/{symbol.upper()}"
     cursor, all_rows = None, []
     for _ in range(10):
-        params = {"greeks": "true", "limit": 50}
+        params = {"limit": 50}
         if cursor:
             params["cursor"] = cursor
         status, j = _get(url, params)
@@ -46,46 +46,25 @@ def fetch_all(symbol):
     return all_rows
 
 # ─────────────────────────────
-def find_next_expiry(symbol, mode):
-    """يحدد أقرب أسبوعية أو شهرية حسب نوع الاستراتيجية"""
-    rows = fetch_all(symbol)
-    if not rows:
-        return None, {"why": "no option data"}, None
-
-    today = TODAY().isoformat()
+def find_expiries(rows):
     expiries = sorted({
         r.get("details", {}).get("expiration_date")
         for r in rows if r.get("details", {}).get("expiration_date")
     })
-    expiries = [d for d in expiries if d >= today]
-    if not expiries:
-        return None, {"why": "no upcoming expiry"}, None
+    today = TODAY().isoformat()
+    return [d for d in expiries if d >= today]
 
-    if mode == "weekly":
-        exp_target = expiries[0]
-    else:  # monthly
-        exp_target = next((d for d in expiries if d.endswith("-28") or d.endswith("-29") or d.endswith("-30") or d.endswith("-31")), expiries[-1])
-
-    return exp_target, None, rows
-
-# ─────────────────────────────
-def analyze_oi(rows, expiry, mode):
-    """يحسب أقوى مستويات CALL و PUT حسب النمط"""
+def analyze_oi(rows, expiry, limit):
     rows = [r for r in rows if r.get("details", {}).get("expiration_date") == expiry]
+    if not rows:
+        return None, [], []
+
     price = None
     for r in rows:
         p = r.get("underlying_asset", {}).get("price")
         if isinstance(p, (int, float)) and p > 0:
             price = p
             break
-    if not price:
-        return None, [], []
-
-    low, high = price * 0.8, price * 1.2
-    rows = [
-        r for r in rows
-        if low <= (r.get("details", {}).get("strike_price") or 0) <= high
-    ]
 
     calls, puts = [], []
     for r in rows:
@@ -100,89 +79,41 @@ def analyze_oi(rows, expiry, mode):
         elif ctype == "put":
             puts.append((strike, oi))
 
-    limit = 3 if mode == "weekly" else 6
     top_calls = sorted(calls, key=lambda x: x[1], reverse=True)[:limit]
     top_puts  = sorted(puts, key=lambda x: x[1], reverse=True)[:limit]
     return price, top_calls, top_puts
 
 # ─────────────────────────────
-def make_pine(symbol, exp, price, top_calls, top_puts, mode):
-    def fmt(arr): return ",".join(str(round(x[0], 2)) for x in arr)
-    def pct(arr):
-        if not arr: return "1.0"
-        base = arr[0][1]
-        return ",".join(str(round(x[1] / base, 2)) for x in arr)
-
-    title = f"Bassam OI[Pro] • {'Weekly' if mode=='weekly' else 'Monthly'} Gradient Levels | {symbol.upper()} | Exp {exp}"
-    return f"""//@version=5
-indicator("{title}", overlay=true, max_lines_count=500, max_labels_count=500)
-
-// Auto-fetched from Polygon snapshot
-calls_strikes = array.from({fmt(top_calls)})
-calls_pct     = array.from({pct(top_calls)})
-puts_strikes  = array.from({fmt(top_puts)})
-puts_pct      = array.from({pct(top_puts)})
-
-// دالة لتوليد تدرج اللون
-f_grad(_base, _pwr) =>
-    _alpha = int(100 - (_pwr * 90))  // كلما زادت القوة، قلّ الشفافية
-    color.new(_base, _alpha)
-
-if barstate.islast
-    // 🟩 CALL Walls بتدرج القوة
-    for i = 0 to array.size(calls_strikes) - 1
-        y = array.get(calls_strikes, i)
-        p = array.get(calls_pct, i)
-        col = f_grad(color.lime, p)
-        h = int(math.max(8, p * 150))
-        line.new(bar_index - 5, y, bar_index + h, y, color=col, width=8)
-        label.new(bar_index + h, y, str.tostring(math.round(p * 100)) + "%", 
-            style=label.style_label_left, textcolor=color.white, color=color.new(col, 70))
-
-    // 🟥 PUT Walls بتدرج القوة
-    for i = 0 to array.size(puts_strikes) - 1
-        y = array.get(puts_strikes, i)
-        p = array.get(puts_pct, i)
-        col = f_grad(color.red, p)
-        h = int(math.max(8, p * 150))
-        line.new(bar_index - 5, y, bar_index + h, y, color=col, width=8)
-        label.new(bar_index + h, y, str.tostring(math.round(p * 100)) + "%", 
-            style=label.style_label_left, textcolor=color.white, color=color.new(col, 70))
-
-    // 💎 السعر الحالي
-    line.new(bar_index - 10, {price}, bar_index + 50, {price}, color=color.new(color.aqua, 0), width=2)
-    label.new(bar_index + 50, {price}, "Price: " + str.tostring({price}), textcolor=color.aqua)
-"""
-
-# ─────────────────────────────
-@app.route("/<symbol>/pine")
-def pine(symbol):
-    if not POLY_KEY:
-        return _err("Missing POLYGON_API_KEY", 401)
-    mode = request.args.get("mode", "weekly").lower()
-    exp, err, rows = find_next_expiry(symbol, mode)
-    if err:
-        return _err("Failed to find expiry", 502, err, symbol)
-    price, top_calls, top_puts = analyze_oi(rows, exp, mode)
-    pine_code = make_pine(symbol, exp, price, top_calls, top_puts, mode)
-    return Response(pine_code, mimetype="text/plain")
-
 @app.route("/<symbol>/json")
 def json_route(symbol):
     if not POLY_KEY:
         return _err("Missing POLYGON_API_KEY", 401)
-    mode = request.args.get("mode", "weekly").lower()
-    exp, err, rows = find_next_expiry(symbol, mode)
-    if err:
-        return _err("Failed to find expiry", 502, err, symbol)
-    price, top_calls, top_puts = analyze_oi(rows, exp, mode)
+    rows = fetch_all(symbol)
+    expiries = find_expiries(rows)
+    if not expiries:
+        return _err("No upcoming expiries found", 404, {"why": "empty list"}, symbol)
+
+    # أقرب أسبوعي (أول تاريخ)
+    exp_week = expiries[0]
+    price, w_calls, w_puts = analyze_oi(rows, exp_week, 3)
+
+    # أقرب شهري (آخر جمعة أو تاريخ آخر الشهر)
+    exp_month = next((d for d in expiries if d.endswith("-28") or d.endswith("-29") or d.endswith("-30") or d.endswith("-31")), expiries[-1])
+    _, m_calls, m_puts = analyze_oi(rows, exp_month, 6)
+
     return jsonify({
         "symbol": symbol.upper(),
-        "mode": mode,
-        "expiry": exp,
         "price": round(price, 2) if price else None,
-        "call_walls": [{"strike": s, "oi": oi} for s, oi in top_calls],
-        "put_walls": [{"strike": s, "oi": oi} for s, oi in top_puts]
+        "weekly": {
+            "expiry": exp_week,
+            "call_walls": [{"strike": s, "oi": oi} for s, oi in w_calls],
+            "put_walls": [{"strike": s, "oi": oi} for s, oi in w_puts]
+        },
+        "monthly": {
+            "expiry": exp_month,
+            "call_walls": [{"strike": s, "oi": oi} for s, oi in m_calls],
+            "put_walls": [{"strike": s, "oi": oi} for s, oi in m_puts]
+        }
     })
 
 @app.route("/")
@@ -190,12 +121,10 @@ def home():
     return jsonify({
         "status": "OK ✅",
         "usage": {
-            "weekly_json": "/AAPL/json?mode=weekly",
-            "monthly_json": "/AAPL/json?mode=monthly",
-            "weekly_pine": "/AAPL/pine?mode=weekly",
-            "monthly_pine": "/AAPL/pine?mode=monthly"
+            "json": "/AAPL/json",
+            "example_in_TV": "Use mode selector inside indicator settings"
         },
-        "author": "Bassam OI[Pro] v1.9 – Gradient Power Bars"
+        "author": "Bassam OI[Pro] v2.0 – Dual Weekly & Monthly"
     })
 
 if __name__ == "__main__":
