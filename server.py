@@ -138,6 +138,10 @@ def normalize_for_pine(data):
     ivs     = [round(iv, 4) for (_, _, iv) in data]
     return strikes, pcts, ivs
 
+
+def to_pine_array(arr):
+    return ",".join(str(x) for x in arr)
+
 # ============================================================
 # تحديث البيانات المخزّنة
 # ============================================================
@@ -184,9 +188,6 @@ def all_pine():
         wp_s, wp_p, wp_iv = normalize_for_pine(data["weekly"]["puts"])
         mc_s, mc_p, mc_iv = normalize_for_pine(data["monthly"]["calls"])
         mp_s, mp_p, mp_iv = normalize_for_pine(data["monthly"]["puts"])
-
-def to_pine_array(arr):
-    return ",".join(str(x) for x in arr)
 
 ...
 
