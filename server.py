@@ -1,8 +1,9 @@
 # ============================================================
-# Bassam GEX PRO v4.3 – Multi-Symbol SmartMode + IV% + AskGroup (240m) + Hourly Cache
+# Bassam GEX PRO v4.4 – SmartCache Edition
+# Multi-Symbol SmartMode + IV% + AskGroup (240m) + Hourly Cache
 # ============================================================
 
-import os, json, datetime as dt, requests
+import os, json, datetime as dt, requests, time
 from flask import Flask, jsonify, Response
 
 app = Flask(__name__)
@@ -10,14 +11,21 @@ POLY_KEY  = (os.environ.get("POLYGON_API_KEY") or "").strip()
 BASE_SNAP = "https://api.polygon.io/v3/snapshot/options"
 TODAY     = dt.date.today
 
+# ============================================================
+# الرموز الرسمية
+# ============================================================
 SYMBOLS = [
     "AAPL","META","MSFT","NVDA","TSLA","GOOGL","AMD",
     "CRWD","SPY","PLTR","LULU","LLY","COIN","MSTR","APP","ASML"
 ]
 
-# ------------------------------------------------------------
-# دوال مساعدة
-# ------------------------------------------------------------
+# ذاكرة مؤقتة داخلية (SmartCache)
+CACHE = {}
+CACHE_EXPIRY = 3600  # ثانية = ساعة واحدة
+
+# ============================================================
+# دوال مساعدة عامة
+# ============================================================
 def _err(msg, http=502, data=None, sym=None):
     body = {"error": msg}
     if data is not None: body["data"] = data
@@ -30,10 +38,14 @@ def _get(url, params=None):
     params["apiKey"] = POLY_KEY
     headers = {"Authorization": f"Bearer {POLY_KEY}"} if POLY_KEY else {}
     r = requests.get(url, params=params, headers=headers, timeout=30)
-    try: return r.status_code, r.json()
-    except Exception: return r.status_code, {"error": "Invalid JSON"}
+    try:
+        return r.status_code, r.json()
+    except Exception:
+        return r.status_code, {"error": "Invalid JSON"}
 
-# ------------------------------------------------------------
+# ============================================================
+# Polygon Data Fetch
+# ============================================================
 def fetch_all(symbol):
     """يجلب جميع صفحات snapshot (حد 50 في الصفحة)"""
     url = f"{BASE_SNAP}/{symbol.upper()}"
@@ -50,6 +62,9 @@ def fetch_all(symbol):
         cursor = cursor.split("cursor=")[-1]
     return all_rows
 
+# ============================================================
+# تحليل البيانات واستخراج الـ Expiries
+# ============================================================
 def list_future_expiries(rows):
     expiries = sorted({
         r.get("details", {}).get("expiration_date")
@@ -64,8 +79,7 @@ def nearest_weekly(expiries):
             y, m, dd = map(int, d.split("-"))
             if dt.date(y, m, dd).weekday() == 4:
                 return d
-        except Exception:
-            continue
+        except: continue
     return expiries[0] if expiries else None
 
 def nearest_monthly(expiries):
@@ -78,13 +92,14 @@ def nearest_monthly(expiries):
         Y, M, D = map(int, d.split("-"))
         if dt.date(Y, M, D).weekday() == 4:
             last_friday = d
-    if last_friday: return last_friday
-    return month_list[-1] if month_list else expiries[-1]
+    return last_friday or month_list[-1] if month_list else expiries[-1]
 
+# ============================================================
+# تحليل OI + IV
+# ============================================================
 def analyze_oi_iv(rows, expiry, per_side_limit, split_by_price=True):
     rows = [r for r in rows if r.get("details", {}).get("expiration_date") == expiry]
     if not rows: return None, [], []
-
     price = None
     for r in rows:
         p = r.get("underlying_asset", {}).get("price")
@@ -99,8 +114,7 @@ def analyze_oi_iv(rows, expiry, per_side_limit, split_by_price=True):
         ctype  = det.get("contract_type")
         oi     = r.get("open_interest")
         iv     = r.get("implied_volatility")
-        if not (isinstance(strike, (int, float)) and isinstance(oi, (int, float))):
-            continue
+        if not (isinstance(strike, (int, float)) and isinstance(oi, (int, float))): continue
         iv = float(iv) if isinstance(iv, (int,float)) else 0.0
         if ctype == "call": calls.append((strike, oi, iv))
         elif ctype == "put": puts.append((strike, oi, iv))
@@ -113,6 +127,9 @@ def analyze_oi_iv(rows, expiry, per_side_limit, split_by_price=True):
     top_puts  = sorted(puts,  key=lambda x: x[1], reverse=True)[:per_side_limit]
     return price, top_calls, top_puts
 
+# ============================================================
+# Normalize Data for Pine
+# ============================================================
 def normalize_for_pine(data):
     if not data: return [], [], []
     base = max(oi for _, oi, _ in data) or 1.0
@@ -121,54 +138,65 @@ def normalize_for_pine(data):
     ivs     = [round(iv, 4) for (_, _, iv) in data]
     return strikes, pcts, ivs
 
-# ------------------------------------------------------------
+# ============================================================
+# تحديث البيانات المخزّنة
+# ============================================================
+def update_symbol_data(symbol):
+    rows = fetch_all(symbol)
+    expiries = list_future_expiries(rows)
+    if not expiries: return None
+    exp_w, exp_m = nearest_weekly(expiries), nearest_monthly(expiries)
+    _, w_calls, w_puts = analyze_oi_iv(rows, exp_w, 3)
+    _, m_calls, m_puts = analyze_oi_iv(rows, exp_m, 6)
+    return {
+        "symbol": symbol,
+        "weekly": {"calls": w_calls, "puts": w_puts},
+        "monthly": {"calls": m_calls, "puts": m_puts},
+        "timestamp": time.time()
+    }
+
+# ============================================================
+# جلب البيانات مع الكاش
+# ============================================================
+def get_symbol_data(symbol):
+    now = time.time()
+    if symbol in CACHE and (now - CACHE[symbol]["timestamp"] < CACHE_EXPIRY):
+        return CACHE[symbol]
+    data = update_symbol_data(symbol)
+    if data: CACHE[symbol] = data
+    return data
+
+# ============================================================
+# /all/pine endpoint
+# ============================================================
 @app.route("/all/pine")
 def all_pine():
-    """ينشئ سكربت واحد لجميع الرموز"""
     if not POLY_KEY: return _err("Missing POLYGON_API_KEY", 401)
 
-    output = []
+    blocks = []
     for sym in SYMBOLS:
-        rows = fetch_all(sym)
-        expiries = list_future_expiries(rows)
-        if not expiries: continue
-        exp_w = nearest_weekly(expiries)
-        exp_m = nearest_monthly(expiries)
+        data = get_symbol_data(sym)
+        if not data: continue
 
-        _, w_calls, w_puts = analyze_oi_iv(rows, exp_w, per_side_limit=3) if exp_w else (None, [], [])
-        _, m_calls, m_puts = analyze_oi_iv(rows, exp_m, per_side_limit=6) if exp_m else (None, [], [])
+        wc_s, wc_p, wc_iv = normalize_for_pine(data["weekly"]["calls"])
+        wp_s, wp_p, wp_iv = normalize_for_pine(data["weekly"]["puts"])
+        mc_s, mc_p, mc_iv = normalize_for_pine(data["monthly"]["calls"])
+        mp_s, mp_p, mp_iv = normalize_for_pine(data["monthly"]["puts"])
 
-        wc_s, wc_p, wc_iv = normalize_for_pine(w_calls)
-        wp_s, wp_p, wp_iv = normalize_for_pine(w_puts)
-        mc_s, mc_p, mc_iv = normalize_for_pine(m_calls)
-        mp_s, mp_p, mp_iv = normalize_for_pine(m_puts)
-
-        code = f"""
+        block = f"""
 //========= {sym} =========
 if syminfo.ticker == "{sym}"
     title = "GEX PRO • " + mode + " | {sym}"
     if mode == "Weekly"
-        draw_side(array.from({', '.join(map(str, wc_s))}),
-                  array.from({', '.join(map(str, wc_p))}),
-                  array.from({', '.join(map(str, wc_iv))}),
-                  color.lime)
-        draw_side(array.from({', '.join(map(str, wp_s))}),
-                  array.from({', '.join(map(str, wp_p))}),
-                  array.from({', '.join(map(str, wp_iv))}),
-                  color.red)
+        draw_side(array.from({wc_s}), array.from({wc_p}), array.from({wc_iv}), color.lime)
+        draw_side(array.from({wp_s}), array.from({wp_p}), array.from({wp_iv}), color.red)
     if mode == "Monthly"
-        draw_side(array.from({', '.join(map(str, mc_s))}),
-                  array.from({', '.join(map(str, mc_p))}),
-                  array.from({', '.join(map(str, mc_iv))}),
-                  color.new(color.green, 0))
-        draw_side(array.from({', '.join(map(str, mp_s))}),
-                  array.from({', '.join(map(str, mp_p))}),
-                  array.from({', '.join(map(str, mp_iv))}),
-                  color.new(#b02727, 0))
+        draw_side(array.from({mc_s}), array.from({mc_p}), array.from({mc_iv}), color.new(color.green, 0))
+        draw_side(array.from({mp_s}), array.from({mp_p}), array.from({mp_iv}), color.new(#b02727, 0))
 """
-        output.append(code)
+        blocks.append(block)
 
-    pine = //@version=5
+    pine = f"""//@version=5
 indicator("GEX PRO • SmartMode + IV% + AskGroup (240m)", overlay=true, max_lines_count=500, max_labels_count=500)
 mode = input.string("Weekly", "Expiry Mode", options=["Weekly","Monthly"], group="Settings")
 
@@ -185,7 +213,8 @@ draw_side(_s, _p, _iv, _col) =>
             str.tostring(p*100, "#.##") + "%  |  IV " + str.tostring(iv*100, "#.##") + "%",
             style=label.style_none, textcolor=color.white, size=size.small)
 
-{''.join(output)}
+{''.join(blocks)}
+
 // ===== 240m Ask Group (fixed timeframe) =====
 h240 = request.security(syminfo.tickerid, "240", high)
 l240 = request.security(syminfo.tickerid, "240", low)
@@ -285,16 +314,22 @@ if drawhl
         lowestLabel := label.new(bar_index + label_location, newLow, "Lowest PL " + str.tostring(newLow),
                                  color=color.new(color.silver, 0), textcolor=color.black, style=label.style_label_up)
 
-# ------------------------------------------------------------
+
+return Response(pine, mimetype="text/plain")
+
+# ============================================================
+# Root Info
+# ============================================================
 @app.route("/")
 def home():
     return jsonify({
         "status": "OK ✅",
         "symbols": SYMBOLS,
+        "author": "Bassam GEX PRO v4.4 – SmartCache Edition",
+        "interval": "240m ثابت",
+        "update": "كل ساعة تلقائيًا",
         "usage": {"all_pine": "/all/pine"},
-        "author": "Bassam GEX PRO v4.3",
-        "interval": "240m AskGroup ثابت",
-        "update": "كل ساعة من Polygon",
+        "cache_items": len(CACHE)
     })
 
 if __name__ == "__main__":
