@@ -7,6 +7,7 @@ POLY_KEY  = (os.environ.get("POLYGON_API_KEY") or "").strip()
 BASE_SNAP = "https://api.polygon.io/v3/snapshot/options"
 TODAY     = dt.date.today
 
+
 #─────────────────────────────
 def _err(msg, http=502, data=None, sym=None):
     body = {"error": msg}
