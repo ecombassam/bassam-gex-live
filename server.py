@@ -188,12 +188,11 @@ draw_side(_strikes, _pcts, _ivs, _base_col) =>
         bar_len = int(math.max(10, p * 120))
         line.new(bar_index - 5, y, bar_index + bar_len - 5, y, color=bar_col, width=6)
         label.new(
-            bar_index + bar_len + 1, y,
-            str.format("{0:.1f}%  |  IV {1:.1f}%", p*100, iv*100),
-            style=label.style_none,
-            textcolor=color.white,
-            size=size.small
-        )
+     bar_index + bar_len + 1, y,
+     str.tostring(p*100, "#.##") + "%  |  IV " + str.tostring(iv*100, "#.##") + "%",
+     style = label.style_none,
+     textcolor = color.white,
+     size = size.small)
 
 if barstate.islast
     if mode == "Weekly"
