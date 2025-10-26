@@ -320,7 +320,7 @@ src_p   = useWeekly ? {arr_or_empty(wc_p)}  : {arr_or_empty(mc_p)}
             h_bot := line.new(bar_index - 10, h_bot_y, bar_index + 10, h_bot_y, extend = extend.both, color = color.new(colHVL, 0), width = 1, style = line.style_dotted)
             h_lab := label.new(bar_index + 5, hvl_y, "HVL " + str.tostring(hvl_y, "#.##") + (colHVL == color.lime ? "  (🟢)" : colHVL == color.red ? "  (🔴)" : "  (🟡)") + " ±" + str.tostring(zoneWidth, "#.##") + "%", style = label.style_label_left, textcolor = color.black, color = colHVL, size = size.small)
 """
-        blocks.append(block)
+blocks.append(block)
 
         now = dt.datetime.now(dt.timezone(dt.timedelta(hours=3)))  # توقيت الرياض
         last_update = now.strftime("%Y-%m-%d %H:%M:%S")
