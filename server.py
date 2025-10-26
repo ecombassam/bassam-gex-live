@@ -149,16 +149,27 @@ def to_pine_array(arr):
 def update_symbol_data(symbol):
     rows = fetch_all(symbol)
     expiries = list_future_expiries(rows)
-    if not expiries: return None
-    exp_w, exp_m = nearest_weekly(expiries), nearest_monthly(expiries)
-    _, w_calls, w_puts = analyze_oi_iv(rows, exp_w, 3)
+    if not expiries:
+        return None
+
+    exp_w = nearest_weekly(expiries)
+    exp_m = nearest_monthly(expiries)
+
+    # ✅ تصحيح: إذا كان تاريخ الأسبوعي يطابق الشهري، نعتبره شهري فقط
+    if exp_w == exp_m:
+        exp_w = None
+
+    # جلب البيانات
+    _, w_calls, w_puts = analyze_oi_iv(rows, exp_w, 3) if exp_w else (None, [], [])
     _, m_calls, m_puts = analyze_oi_iv(rows, exp_m, 6)
+
     return {
         "symbol": symbol,
         "weekly": {"calls": w_calls, "puts": w_puts},
         "monthly": {"calls": m_calls, "puts": m_puts},
         "timestamp": time.time()
     }
+
 
 # ============================================================
 # جلب البيانات مع الكاش
@@ -310,26 +321,15 @@ if showHVL
         )
 
 
-        hvl_box := box.new(left = bar_index - 5, top = hvl_top_y, right = bar_index + 5, bottom = hvl_bot_y,
-                           bgcolor = color.new(colHVL, 85), border_color = color.new(colHVL, 50))
-        hvl_top := line.new(bar_index - 10, hvl_top_y, bar_index + 10, hvl_top_y,
-                            extend = extend.both, color = color.new(colHVL, 0),
-                            width = 1, style = line.style_dotted)
-        hvl_bot := line.new(bar_index - 10, hvl_bot_y, bar_index + 10, hvl_bot_y,
-                            extend = extend.both, color = color.new(colHVL, 0),
-                            width = 1, style = line.style_dotted)
-        hvl_label := label.new(bar_index + 5, hvl_y,
-            "HVL " + str.tostring(hvl_y, "#.##") +
-            (colHVL == color.lime ? "  (🟢 )" :
-             colHVL == color.red ? "  (🔴 )" : "  (🟡 )") +
-            "  ±" + str.tostring(zoneWidth, "#.##") + "%",
-            style = label.style_label_left,
-            textcolor = color.black, color = colHVL, size = size.small)
+        hvl_box := box.new(left = bar_index - 5, top = hvl_top_y, right = bar_index + 5, bottom = hvl_bot_y,bgcolor = color.new(colHVL, 85), border_color = color.new(colHVL, 50))
+        hvl_top := line.new(bar_index - 10, hvl_top_y, bar_index + 10, hvl_top_y,extend = extend.both, color = color.new(colHVL, 0),width = 1, style = line.style_dotted)
+        hvl_bot := line.new(bar_index - 10, hvl_bot_y, bar_index + 10, hvl_bot_y,extend = extend.both, color = color.new(colHVL, 0),width = 1, style = line.style_dotted)
+        hvl_label := label.new(bar_index + 5, hvl_y,"HVL " + str.tostring(hvl_y, "#.##") +(colHVL == color.lime ? "  (🟢 )" :colHVL == color.red ? "  (🔴 )" : "  (🟡 )") +"  ±" + str.tostring(zoneWidth, "#.##") + "%",style = label.style_label_left,textcolor = color.black, color = colHVL, size = size.small)
 
 
 {''.join(blocks)}
 
-# ===== 240m Ask Group (fixed timeframe) =====
+// ===== 240m Ask Group (fixed timeframe) =====
 h240 = request.security(syminfo.tickerid, "240", high)
 l240 = request.security(syminfo.tickerid, "240", low)
 c240 = request.security(syminfo.tickerid, "240", close)
