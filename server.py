@@ -242,11 +242,6 @@ if syminfo.ticker == "{sym}"
             draw_side({arr_or_empty(wc_s)}, {arr_or_empty(wc_p)}, {arr_or_empty(wc_iv)}, color.lime)
             draw_side({arr_or_empty(wp_s)}, {arr_or_empty(wp_p)}, {arr_or_empty(wp_iv)}, color.red)
 
-    #if mode == "Monthly"
-     #   // 🔹 شهري دائمًا
-     #   draw_side(array.from({to_pine_array(mc_s)}), array.from({to_pine_array(mc_p)}), array.from({to_pine_array(mc_iv)}), color.new(color.green, 0))
-      #  draw_side(array.from({to_pine_array(mp_s)}), array.from({to_pine_array(mp_p)}), array.from({to_pine_array(mp_iv)}), color.new(#b02727, 0))
-
     // -------- HVL Smart Zone --------
     w_iv = {arr_or_empty(wc_iv)}
     w_s  = {arr_or_empty(wc_s)}
