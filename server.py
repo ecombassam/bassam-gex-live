@@ -283,14 +283,16 @@ if showHVL
     src_str = mode == "Weekly"  ? wc_s  : mc_s
     src_p   = mode == "Weekly"  ? wc_p  : mc_p
 
+    // ✅ تحقق قبل الحلقة
+    if array.size(src_iv) > 0
+        // تحديد أعلى IV
+        for i = 0 to array.size(src_iv) - 1
+            iv = array.get(src_iv, i)
+            if iv > max_iv
+                max_iv := iv
+                hvl_y  := array.get(src_str, i)
+                idx    := i
 
-    // تحديد أعلى IV
-    for i = 0 to array.size(src_iv) - 1
-        iv = array.get(src_iv, i)
-        if iv > max_iv
-            max_iv := iv
-            hvl_y  := array.get(src_str, i)
-            idx    := i
 
     // إذا وُجدت قيمة واضحة
     if not na(hvl_y)
