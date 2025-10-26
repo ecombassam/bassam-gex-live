@@ -435,9 +435,9 @@ if drawhl
         lowestLabel := label.new(bar_index + label_location, newLow, "Lowest PL " + str.tostring(newLow),color=color.new(color.silver, 0), textcolor=color.black, style=label.style_label_up)
 """
 
-   return Response(pine, mimetype="text/plain")
+return Response(pine, mimetype="text/plain")
 
-
+   
 # ============================================================
 # /all/json endpoint
 # ============================================================
