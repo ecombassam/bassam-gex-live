@@ -240,6 +240,8 @@ draw_side(_s, _p, _iv, _col) =>
     array.clear(linesArr)
     array.clear(labelsArr)
 
+    // ✅ تحقق قبل رسم الأشرطة
+if array.size(_s) > 0 and array.size(_p) > 0 and array.size(_iv) > 0
     // رسم الأشرطة الجديدة
     for i = 0 to array.size(_s) - 1
         y  = array.get(_s, i)
@@ -253,6 +255,7 @@ draw_side(_s, _p, _iv, _col) =>
 
         array.push(linesArr, lineRef)
         array.push(labelsArr, labelRef)
+
 
 // ====== HVL Smart Zone (Gamma Direction Aware) ======
 var float[] wc_iv = array.from({to_pine_array(wc_iv)})
