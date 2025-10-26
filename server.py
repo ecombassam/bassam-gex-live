@@ -224,23 +224,37 @@ def all_pine():
         dup_str = "true" if data.get("duplicate") else "false"
 
         # Per-symbol Pine block
-        block = f"""
+block = f"""
 //========= {sym} =========
 if syminfo.ticker == "{sym}"
     title = "GEX PRO • " + mode + " | {sym}"
-
     duplicate_expiry = {dup_str}
 
     // -------- GEX bars --------
+    var bool showWeekly = false
+    var bool showMonthly = false
+
+    // ✅ المنطق الصحيح
     if mode == "Weekly"
         if duplicate_expiry
-            // ✅ إذا آخر جمعة في الشهر، اعرض بيانات الشهري فقط
-            draw_side(array.from({to_pine_array(mc_s)}), array.from({to_pine_array(mc_p)}), array.from({to_pine_array(mc_iv)}), color.lime)
-            draw_side(array.from({to_pine_array(mp_s)}), array.from({to_pine_array(mp_p)}), array.from({to_pine_array(mp_iv)}), color.red)
+            showMonthly := true
+            showWeekly := false
         else
-            // 🔹 أسبوعي عادي
-            draw_side({arr_or_empty(wc_s)}, {arr_or_empty(wc_p)}, {arr_or_empty(wc_iv)}, color.lime)
-            draw_side({arr_or_empty(wp_s)}, {arr_or_empty(wp_p)}, {arr_or_empty(wp_iv)}, color.red)
+            showWeekly := true
+            showMonthly := false
+    if mode == "Monthly"
+        showMonthly := true
+        showWeekly := false
+
+    // 🔹 رسم الأعمدة بناءً على الحالة
+    if showWeekly
+        draw_side({arr_or_empty(wc_s)}, {arr_or_empty(wc_p)}, {arr_or_empty(wc_iv)}, color.lime)
+        draw_side({arr_or_empty(wp_s)}, {arr_or_empty(wp_p)}, {arr_or_empty(wp_iv)}, color.red)
+
+    if showMonthly
+        draw_side(array.from({to_pine_array(mc_s)}), array.from({to_pine_array(mc_p)}), array.from({to_pine_array(mc_iv)}), color.new(color.green, 0))
+        draw_side(array.from({to_pine_array(mp_s)}), array.from({to_pine_array(mp_p)}), array.from({to_pine_array(mp_iv)}), color.new(#b02727, 0))
+
 
     // -------- HVL Smart Zone --------
     w_iv = {arr_or_empty(wc_iv)}
@@ -251,10 +265,12 @@ if syminfo.ticker == "{sym}"
     m_p  = {arr_or_empty(mc_p)}
 
     // ✅ استخدم الشهري إذا الأسبوعي مكرر
-    useWeekly = (mode == "Weekly") and (array.size(w_iv) > 0) and (not duplicate_expiry)
-    src_iv  = useWeekly ? w_iv : m_iv
-    src_str = useWeekly ? w_s  : m_s
-    src_p   = useWeekly ? w_p  : m_p
+// -------- HVL Smart Zone --------
+useWeekly = showWeekly and (array.size({arr_or_empty(wc_iv)}) > 0)
+src_iv  = useWeekly ? {arr_or_empty(wc_iv)} : {arr_or_empty(mc_iv)}
+src_str = useWeekly ? {arr_or_empty(wc_s)}  : {arr_or_empty(mc_s)}
+src_p   = useWeekly ? {arr_or_empty(wc_p)}  : {arr_or_empty(mc_p)}
+
 
     var line  h_top = na
     var line  h_bot = na
