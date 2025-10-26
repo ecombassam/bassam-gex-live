@@ -311,9 +311,12 @@ if syminfo.ticker == "{sym}"
 """
         blocks.append(block)
 
+now = dt.datetime.now(dt.timezone(dt.timedelta(hours=3)))  # توقيت الرياض
+last_update = now.strftime("%Y-%m-%d %H:%M:%S")
 
     # ===== Build full Pine code =====
     pine = f"""//@version=5
+// Last Update: {last_update} 
 indicator("GEX PRO • SmartMode + IV% + AskGroup (240m)", overlay=true, max_lines_count=500, max_labels_count=500)
 mode = input.string("Weekly", "Expiry Mode", options=["Weekly","Monthly"])
 
