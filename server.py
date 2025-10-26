@@ -312,13 +312,13 @@ if syminfo.ticker == "{sym}"
             h_bot := line.new(bar_index - 10, h_bot_y, bar_index + 10, h_bot_y, extend = extend.both, color = color.new(colHVL, 0), width = 1, style = line.style_dotted)
             h_lab := label.new(bar_index + 5, hvl_y, "HVL " + str.tostring(hvl_y, "#.##") + (colHVL == color.lime ? "  (🟢)" : colHVL == color.red ? "  (🔴)" : "  (🟡)") + " ±" + str.tostring(zoneWidth, "#.##") + "%", style = label.style_label_left, textcolor = color.black, color = colHVL, size = size.small)
 """
-blocks.append(block)
+            blocks.append(block)
 
-now = dt.datetime.now(dt.timezone(dt.timedelta(hours=3)))  # توقيت الرياض
-last_update = now.strftime("%Y-%m-%d %H:%M:%S")
+    now = dt.datetime.now(dt.timezone(dt.timedelta(hours=3)))  # توقيت الرياض
+    last_update = now.strftime("%Y-%m-%d %H:%M:%S")
 
-# ===== Build full Pine code =====
-pine = f"""//@version=5
+    # ===== Build full Pine code =====
+    pine = f"""//@version=5
 // Last Update: {last_update} 
 indicator("GEX PRO • SmartMode + IV% + AskGroup (240m)", overlay=true, max_lines_count=500, max_labels_count=500)
 mode = input.string("Weekly", "Expiry Mode", options=["Weekly","Monthly"])
