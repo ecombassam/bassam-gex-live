@@ -187,6 +187,7 @@ def update_symbol_data(symbol):
         "symbol": symbol,
         "weekly": {"calls": w_calls, "puts": w_puts},
         "monthly": {"calls": m_calls, "puts": m_puts},
+        "duplicate": use_monthly_for_weekly,   # <-- أضف هذا
         "timestamp": time.time()
     }
 
@@ -219,22 +220,33 @@ def all_pine():
         mc_s, mc_p, mc_iv = normalize_for_pine(data["monthly"]["calls"])
         mp_s, mp_p, mp_iv = normalize_for_pine(data["monthly"]["puts"])
 
+        # ✅ أضف هذا السطر قبل بناء block
+        dup_str = "true" if data.get("duplicate") else "false"
+
         # Per-symbol Pine block
         block = f"""
 //========= {sym} =========
 if syminfo.ticker == "{sym}"
     title = "GEX PRO • " + mode + " | {sym}"
 
+    // هل الأسبوعي يطابق الشهري في هذا الشهر؟
+    duplicate_expiry = {dup_str}
+
     // -------- GEX bars --------
-    if mode == "Weekly" and not duplicate_expiry
-        draw_side({arr_or_empty(wc_s)}, {arr_or_empty(wc_p)}, {arr_or_empty(wc_iv)}, color.lime)
-        draw_side({arr_or_empty(wp_s)}, {arr_or_empty(wp_p)}, {arr_or_empty(wp_iv)}, color.red)
+    if mode == "Weekly"
+        if duplicate_expiry
+            // في حالة التطابق: اعرض بيانات الشهري مكان الأسبوعي
+            draw_side(array.from({to_pine_array(mc_s)}), array.from({to_pine_array(mc_p)}), array.from({to_pine_array(mc_iv)}), color.lime)
+            draw_side(array.from({to_pine_array(mp_s)}), array.from({to_pine_array(mp_p)}), array.from({to_pine_array(mp_iv)}), color.red)
+        else
+            draw_side({arr_or_empty(wc_s)}, {arr_or_empty(wc_p)}, {arr_or_empty(wc_iv)}, color.lime)
+            draw_side({arr_or_empty(wp_s)}, {arr_or_empty(wp_p)}, {arr_or_empty(wp_iv)}, color.red)
+
     if mode == "Monthly"
         draw_side(array.from({to_pine_array(mc_s)}), array.from({to_pine_array(mc_p)}), array.from({to_pine_array(mc_iv)}), color.new(color.green, 0))
         draw_side(array.from({to_pine_array(mp_s)}), array.from({to_pine_array(mp_p)}), array.from({to_pine_array(mp_iv)}), color.new(#b02727, 0))
 
     // -------- HVL Smart Zone (scoped to this symbol) --------
-    // Arrays (weekly calls) + (monthly calls) to feed HVL
     w_iv = {arr_or_empty(wc_iv)}
     w_s  = {arr_or_empty(wc_s)}
     w_p  = {arr_or_empty(wc_p)}
@@ -242,8 +254,8 @@ if syminfo.ticker == "{sym}"
     m_s  = {arr_or_empty(mc_s)}
     m_p  = {arr_or_empty(mc_p)}
 
-    // choose data per user mode, but show monthly if weekly empty
-    useWeekly = (mode == "Weekly") and (array.size(w_iv) > 0)
+    // اختر المصدر: إذا Weekly ومش متطابقه مع الشهري وفيه بيانات -> Weekly، غير كذا -> Monthly
+    useWeekly = (mode == "Weekly") and (array.size(w_iv) > 0) and (not duplicate_expiry)
     src_iv  = useWeekly ? w_iv : m_iv
     src_str = useWeekly ? w_s  : m_s
     src_p   = useWeekly ? w_p  : m_p
@@ -273,7 +285,6 @@ if syminfo.ticker == "{sym}"
             up_val = na(idx) or idx + 1 >= array.size(src_p) ? na : array.get(src_p, idx + 1)
             dn_val = na(idx) or idx - 1 < 0 ? na : array.get(src_p, idx - 1)
             colHVL = baseColor
-
             if not na(up_val) and not na(dn_val)
                 if up_val > dn_val
                     colHVL := color.new(color.lime, 0)
@@ -295,14 +306,15 @@ if syminfo.ticker == "{sym}"
             h_box := box.new(left = bar_index - 5, top = h_top_y, right = bar_index + 5, bottom = h_bot_y, bgcolor = color.new(colHVL, 85), border_color = color.new(colHVL, 50))
             h_top := line.new(bar_index - 10, h_top_y, bar_index + 10, h_top_y, extend = extend.both, color = color.new(colHVL, 0), width = 1, style = line.style_dotted)
             h_bot := line.new(bar_index - 10, h_bot_y, bar_index + 10, h_bot_y, extend = extend.both, color = color.new(colHVL, 0), width = 1, style = line.style_dotted)
-            h_lab := label.new(bar_index + 5, hvl_y,"HVL " + str.tostring(hvl_y, "#.##") +(colHVL == color.lime ? "  (🟢)" : colHVL == color.red ? "  (🔴)" : "  (🟡)") +"  ±" + str.tostring(zoneWidth, "#.##") + "%", style = label.style_label_left, textcolor = color.black, color = colHVL, size = size.small)
+            h_lab := label.new(bar_index + 5, hvl_y, "HVL " + str.tostring(hvl_y, "#.##") + (colHVL == color.lime ? "  (🟢)" : colHVL == color.red ? "  (🔴)" : "  (🟡)") + " ±" + str.tostring(zoneWidth, "#.##") + "%", style = label.style_label_left, textcolor = color.black, color = colHVL, size = size.small)
 """
         blocks.append(block)
+
 
     # ===== Build full Pine code =====
     pine = f"""//@version=5
 indicator("GEX PRO • SmartMode + IV% + AskGroup (240m)", overlay=true, max_lines_count=500, max_labels_count=500)
-mode = input.string("Weekly", "Expiry Mode", options=["Weekly","Monthly"], group="Settings")
+mode = input.string("Weekly", "Expiry Mode", options=["Weekly","Monthly"])
 
 draw_side(_s, _p, _iv, _col) =>
     // إذا المصفوفات فاضية أو بدون عناصر
