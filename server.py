@@ -419,7 +419,7 @@ for x = 0 to array.size(sr_levels) - 1
         col = lvl < c240 ? color.new(color.lime, 0) : color.new(color.red, 0)
         array.set(sr_lines, x, line.new(bar_index - 1, lvl, bar_index, lvl, color=col, width=1, style=style, extend=extend.both))
 """
-// ===== labels for highest/lowest (from 240m series)
+   // ===== labels for highest/lowest (from 240m series)
 var label highestLabel = na
 var label lowestLabel  = na
 if drawhl
