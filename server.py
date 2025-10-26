@@ -220,7 +220,7 @@ def all_pine():
         mc_s, mc_p, mc_iv = normalize_for_pine(data["monthly"]["calls"])
         mp_s, mp_p, mp_iv = normalize_for_pine(data["monthly"]["puts"])
 
-        # ✅ أضف هذا السطر قبل بناء block
+        # هل الأسبوعي يطابق الشهري (آخر جمعة في الشهر)
         dup_str = "true" if data.get("duplicate") else "false"
 
         # Per-symbol Pine block
@@ -229,24 +229,25 @@ def all_pine():
 if syminfo.ticker == "{sym}"
     title = "GEX PRO • " + mode + " | {sym}"
 
-    // هل الأسبوعي يطابق الشهري في هذا الشهر؟
     duplicate_expiry = {dup_str}
 
     // -------- GEX bars --------
     if mode == "Weekly"
         if duplicate_expiry
-            // في حالة التطابق: اعرض بيانات الشهري مكان الأسبوعي
+            // ✅ إذا آخر جمعة في الشهر، اعرض بيانات الشهري فقط
             draw_side(array.from({to_pine_array(mc_s)}), array.from({to_pine_array(mc_p)}), array.from({to_pine_array(mc_iv)}), color.lime)
             draw_side(array.from({to_pine_array(mp_s)}), array.from({to_pine_array(mp_p)}), array.from({to_pine_array(mp_iv)}), color.red)
         else
+            // 🔹 أسبوعي عادي
             draw_side({arr_or_empty(wc_s)}, {arr_or_empty(wc_p)}, {arr_or_empty(wc_iv)}, color.lime)
             draw_side({arr_or_empty(wp_s)}, {arr_or_empty(wp_p)}, {arr_or_empty(wp_iv)}, color.red)
 
     if mode == "Monthly"
+        // 🔹 شهري دائمًا
         draw_side(array.from({to_pine_array(mc_s)}), array.from({to_pine_array(mc_p)}), array.from({to_pine_array(mc_iv)}), color.new(color.green, 0))
         draw_side(array.from({to_pine_array(mp_s)}), array.from({to_pine_array(mp_p)}), array.from({to_pine_array(mp_iv)}), color.new(#b02727, 0))
 
-    // -------- HVL Smart Zone (scoped to this symbol) --------
+    // -------- HVL Smart Zone --------
     w_iv = {arr_or_empty(wc_iv)}
     w_s  = {arr_or_empty(wc_s)}
     w_p  = {arr_or_empty(wc_p)}
@@ -254,7 +255,7 @@ if syminfo.ticker == "{sym}"
     m_s  = {arr_or_empty(mc_s)}
     m_p  = {arr_or_empty(mc_p)}
 
-    // اختر المصدر: إذا Weekly ومش متطابقه مع الشهري وفيه بيانات -> Weekly، غير كذا -> Monthly
+    // ✅ استخدم الشهري إذا الأسبوعي مكرر
     useWeekly = (mode == "Weekly") and (array.size(w_iv) > 0) and (not duplicate_expiry)
     src_iv  = useWeekly ? w_iv : m_iv
     src_str = useWeekly ? w_s  : m_s
