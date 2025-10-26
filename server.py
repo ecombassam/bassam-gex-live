@@ -311,8 +311,8 @@ if syminfo.ticker == "{sym}"
 """
         blocks.append(block)
 
-now = dt.datetime.now(dt.timezone(dt.timedelta(hours=3)))  # توقيت الرياض
-last_update = now.strftime("%Y-%m-%d %H:%M:%S")
+        now = dt.datetime.now(dt.timezone(dt.timedelta(hours=3)))  # توقيت الرياض
+        last_update = now.strftime("%Y-%m-%d %H:%M:%S")
 
     # ===== Build full Pine code =====
     pine = f"""//@version=5
