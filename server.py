@@ -226,7 +226,7 @@ if syminfo.ticker == "{sym}"
     title = "GEX PRO • " + mode + " | {sym}"
 
     // -------- GEX bars --------
-    if mode == "Weekly"
+    if mode == "Weekly" and not duplicate_expiry
         draw_side({arr_or_empty(wc_s)}, {arr_or_empty(wc_p)}, {arr_or_empty(wc_iv)}, color.lime)
         draw_side({arr_or_empty(wp_s)}, {arr_or_empty(wp_p)}, {arr_or_empty(wp_iv)}, color.red)
     if mode == "Monthly"
