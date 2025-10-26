@@ -1,6 +1,8 @@
 # ============================================================
-# Bassam GEX PRO v4.4 – SmartCache Edition
+# Bassam GEX PRO v4.6 – SmartCache Edition
 # Multi-Symbol SmartMode + IV% + AskGroup (240m) + Hourly Cache
+# AutoMonthFix (show Monthly when Weekly coincides with month-end Friday)
+# HVL arrays & drawing scoped per-symbol to avoid collisions
 # ============================================================
 
 import os, json, datetime as dt, requests, time
@@ -12,19 +14,19 @@ BASE_SNAP = "https://api.polygon.io/v3/snapshot/options"
 TODAY     = dt.date.today
 
 # ============================================================
-# الرموز الرسمية
+# Official symbols
 # ============================================================
 SYMBOLS = [
     "AAPL","META","MSFT","NVDA","TSLA","GOOGL","AMD",
     "CRWD","SPY","PLTR","LULU","LLY","COIN","MSTR","APP","ASML"
 ]
 
-# ذاكرة مؤقتة داخلية (SmartCache)
+# Smart in-memory cache
 CACHE = {}
-CACHE_EXPIRY = 3600  # ثانية = ساعة واحدة
+CACHE_EXPIRY = 3600  # seconds = 1 hour
 
 # ============================================================
-# دوال مساعدة عامة
+# Helpers
 # ============================================================
 def _err(msg, http=502, data=None, sym=None):
     body = {"error": msg}
@@ -47,7 +49,7 @@ def _get(url, params=None):
 # Polygon Data Fetch
 # ============================================================
 def fetch_all(symbol):
-    """يجلب جميع صفحات snapshot (حد 50 في الصفحة)"""
+    """Fetch all snapshot pages (limit 50 per page)"""
     url = f"{BASE_SNAP}/{symbol.upper()}"
     cursor, all_rows = None, []
     for _ in range(10):
@@ -59,11 +61,15 @@ def fetch_all(symbol):
         all_rows.extend(rows)
         cursor = j.get("next_url")
         if not cursor: break
-        cursor = cursor.split("cursor=")[-1]
+        # extract cursor token if next_url is provided
+        if "cursor=" in cursor:
+            cursor = cursor.split("cursor=")[-1]
+        else:
+            cursor = None
     return all_rows
 
 # ============================================================
-# تحليل البيانات واستخراج الـ Expiries
+# Expiries
 # ============================================================
 def list_future_expiries(rows):
     expiries = sorted({
@@ -77,9 +83,10 @@ def nearest_weekly(expiries):
     for d in expiries:
         try:
             y, m, dd = map(int, d.split("-"))
-            if dt.date(y, m, dd).weekday() == 4:
+            if dt.date(y, m, dd).weekday() == 4:  # Friday
                 return d
-        except: continue
+        except Exception:
+            continue
     return expiries[0] if expiries else None
 
 def nearest_monthly(expiries):
@@ -92,10 +99,10 @@ def nearest_monthly(expiries):
         Y, M, D = map(int, d.split("-"))
         if dt.date(Y, M, D).weekday() == 4:
             last_friday = d
-    return last_friday or month_list[-1] if month_list else expiries[-1]
+    return last_friday or (month_list[-1] if month_list else expiries[-1])
 
 # ============================================================
-# تحليل OI + IV
+# Analyze OI + IV
 # ============================================================
 def analyze_oi_iv(rows, expiry, per_side_limit, split_by_price=True):
     rows = [r for r in rows if r.get("details", {}).get("expiration_date") == expiry]
@@ -114,7 +121,8 @@ def analyze_oi_iv(rows, expiry, per_side_limit, split_by_price=True):
         ctype  = det.get("contract_type")
         oi     = r.get("open_interest")
         iv     = r.get("implied_volatility")
-        if not (isinstance(strike, (int, float)) and isinstance(oi, (int, float))): continue
+        if not (isinstance(strike, (int, float)) and isinstance(oi, (int, float))):
+            continue
         iv = float(iv) if isinstance(iv, (int,float)) else 0.0
         if ctype == "call": calls.append((strike, oi, iv))
         elif ctype == "put": puts.append((strike, oi, iv))
@@ -128,37 +136,31 @@ def analyze_oi_iv(rows, expiry, per_side_limit, split_by_price=True):
     return price, top_calls, top_puts
 
 # ============================================================
-# Normalize Data for Pine
+# Normalize for Pine
 # ============================================================
 def normalize_for_pine(data):
     if not data: return [], [], []
     base = max(oi for _, oi, _ in data) or 1.0
-    strikes = [round(s, 2) for (s, _, _) in data]
+    strikes = [round(float(s), 2) for (s, _, _) in data]
     pcts    = [round((oi / base), 4) for (_, oi, _) in data]
-    ivs     = [round(iv, 4) for (_, _, iv) in data]
+    ivs     = [round(float(iv), 4) for (_, _, iv) in data]
     return strikes, pcts, ivs
 
+def to_pine_array(arr):
+    # returns comma-separated floats like: 123.450000,456.780000
+    return ",".join(f"{float(x):.6f}" for x in arr if x is not None)
 
-def arr_or_empty(arr, typename="float"):
-    """
-    تُرجع تعبير Pine صحيح:
-    - إذا المصفوفة فاضية → array.new_float()
-    - إذا فيها عناصر → array.from(<القيم>)
-    """
-    if not arr:
-        return f"array.new_{typename}()"
-    return f"array.from({','.join(f'{float(x):.6f}' for x in arr if x is not None)})"
-
-# ============================================================
-# دالة مساعدة لتفادي الخطأ عند غياب البيانات
-# ============================================================
 def arr_or_empty(arr):
+    """
+    Return a valid Pine expr:
+      - empty -> array.new_float()
+      - values -> array.from(v1,v2,...)
+    """
     txt = to_pine_array(arr)
     return f"array.from({txt})" if txt else "array.new_float()"
 
-
 # ============================================================
-# تحديث البيانات المخزّنة
+# Update + Cache
 # ============================================================
 def update_symbol_data(symbol):
     rows = fetch_all(symbol)
@@ -169,11 +171,12 @@ def update_symbol_data(symbol):
     exp_w = nearest_weekly(expiries)
     exp_m = nearest_monthly(expiries)
 
-    # ✅ منطق جديد: إذا الجمعة الأسبوعية = الجمعة الأخيرة في الشهر → استخدم الشهري بدل الأسبوعي
+    # AutoMonthFix: if the weekly Friday equals the monthly last Friday,
+    # use the monthly set for both (so Weekly bars won't be empty)
     use_monthly_for_weekly = (exp_w == exp_m)
 
-    if use_monthly_for_weekly:
-        _, w_calls, w_puts = analyze_oi_iv(rows, exp_m, 3)  # استخدم الشهري بدل الأسبوعي
+    if use_monthly_for_weekly and exp_m:
+        _, w_calls, w_puts = analyze_oi_iv(rows, exp_m, 3)
     else:
         _, w_calls, w_puts = analyze_oi_iv(rows, exp_w, 3) if exp_w else (None, [], [])
 
@@ -186,10 +189,6 @@ def update_symbol_data(symbol):
         "timestamp": time.time()
     }
 
-
-# ============================================================
-# جلب البيانات مع الكاش
-# ============================================================
 def get_symbol_data(symbol):
     now = time.time()
     if symbol in CACHE and (now - CACHE[symbol]["timestamp"] < CACHE_EXPIRY):
@@ -212,41 +211,107 @@ def all_pine():
         if not data:
             continue
 
+        # weekly (calls, puts)
         wc_s, wc_p, wc_iv = normalize_for_pine(data["weekly"]["calls"])
         wp_s, wp_p, wp_iv = normalize_for_pine(data["weekly"]["puts"])
+        # monthly (calls, puts)
         mc_s, mc_p, mc_iv = normalize_for_pine(data["monthly"]["calls"])
         mp_s, mp_p, mp_iv = normalize_for_pine(data["monthly"]["puts"])
 
+        # Per-symbol Pine block
         block = f"""
 //========= {sym} =========
 if syminfo.ticker == "{sym}"
     title = "GEX PRO • " + mode + " | {sym}"
+
+    // -------- GEX bars --------
     if mode == "Weekly"
         draw_side({arr_or_empty(wc_s)}, {arr_or_empty(wc_p)}, {arr_or_empty(wc_iv)}, color.lime)
         draw_side({arr_or_empty(wp_s)}, {arr_or_empty(wp_p)}, {arr_or_empty(wp_iv)}, color.red)
     if mode == "Monthly"
         draw_side(array.from({to_pine_array(mc_s)}), array.from({to_pine_array(mc_p)}), array.from({to_pine_array(mc_iv)}), color.new(color.green, 0))
         draw_side(array.from({to_pine_array(mp_s)}), array.from({to_pine_array(mp_p)}), array.from({to_pine_array(mp_iv)}), color.new(#b02727, 0))
+
+    // -------- HVL Smart Zone (scoped to this symbol) --------
+    // Arrays (weekly calls) + (monthly calls) to feed HVL
+    w_iv = {arr_or_empty(wc_iv)}
+    w_s  = {arr_or_empty(wc_s)}
+    w_p  = {arr_or_empty(wc_p)}
+    m_iv = {arr_or_empty(mc_iv)}
+    m_s  = {arr_or_empty(mc_s)}
+    m_p  = {arr_or_empty(mc_p)}
+
+    // choose data per user mode, but show monthly if weekly empty
+    useWeekly = (mode == "Weekly") and (array.size(w_iv) > 0)
+    src_iv  = useWeekly ? w_iv : m_iv
+    src_str = useWeekly ? w_s  : m_s
+    src_p   = useWeekly ? w_p  : m_p
+
+    var line  h_top = na
+    var line  h_bot = na
+    var label h_lab = na
+    var box   h_box = na
+
+    showHVL   = input.bool(true, "Show HVL Smart Zone", group="GEX HVL")
+    baseColor = input.color(color.new(color.yellow, 0), "Neutral Zone Color", group="GEX HVL")
+    zoneWidth = input.float(1.0, "Zone Width %", minval=0.2, maxval=5.0, group="GEX HVL")
+
+    float max_iv = 0.0
+    float hvl_y  = na
+    int   idx    = na
+
+    if showHVL
+        for i = 0 to array.size(src_iv) - 1
+            iv = array.get(src_iv, i)
+            if iv > max_iv
+                max_iv := iv
+                hvl_y  := array.get(src_str, i)
+                idx    := i
+
+        if not na(hvl_y)
+            up_val = na(idx) or idx + 1 >= array.size(src_p) ? na : array.get(src_p, idx + 1)
+            dn_val = na(idx) or idx - 1 < 0 ? na : array.get(src_p, idx - 1)
+            colHVL = baseColor
+
+            if not na(up_val) and not na(dn_val)
+                if up_val > dn_val
+                    colHVL := color.new(color.lime, 0)
+                else if up_val < dn_val
+                    colHVL := color.new(color.red, 0)
+
+            if not na(h_top)
+                line.delete(h_top)
+            if not na(h_bot)
+                line.delete(h_bot)
+            if not na(h_lab)
+                label.delete(h_lab)
+            if not na(h_box)
+                box.delete(h_box)
+
+            h_top_y = hvl_y * (1 + zoneWidth / 100)
+            h_bot_y = hvl_y * (1 - zoneWidth / 100)
+
+            h_box := box.new(left = bar_index - 5, top = h_top_y, right = bar_index + 5, bottom = h_bot_y, bgcolor = color.new(colHVL, 85), border_color = color.new(colHVL, 50))
+            h_top := line.new(bar_index - 10, h_top_y, bar_index + 10, h_top_y, extend = extend.both, color = color.new(colHVL, 0), width = 1, style = line.style_dotted)
+            h_bot := line.new(bar_index - 10, h_bot_y, bar_index + 10, h_bot_y, extend = extend.both, color = color.new(colHVL, 0), width = 1, style = line.style_dotted)
+            h_lab := label.new(bar_index + 5, hvl_y,"HVL " + str.tostring(hvl_y, "#.##") +(colHVL == color.lime ? "  (🟢)" : colHVL == color.red ? "  (🔴)" : "  (🟡)") +"  ±" + str.tostring(zoneWidth, "#.##") + "%", style = label.style_label_left, textcolor = color.black, color = colHVL, size = size.small)
 """
         blocks.append(block)
 
-
-    # ===== بناء كود Pine الكامل =====
+    # ===== Build full Pine code =====
     pine = f"""//@version=5
 indicator("GEX PRO • SmartMode + IV% + AskGroup (240m)", overlay=true, max_lines_count=500, max_labels_count=500)
 mode = input.string("Weekly", "Expiry Mode", options=["Weekly","Monthly"], group="Settings")
 
+// --- draw_side: renders horizontal bars for strikes ---
 draw_side(_s, _p, _iv, _col) =>
-    // لا ترسم إذا أي مصفوفة فاضية
     if array.size(_s) == 0 or array.size(_p) == 0 or array.size(_iv) == 0
-        // لا شي
         na
     else
-        // مصفوفات ثابتة تحتفظ بالمراجع لمسح الرسوم القديمة
         var line[]  linesArr  = array.new_line()
         var label[] labelsArr = array.new_label()
 
-        // امسح القديم
+        // clear previous
         for i = 0 to array.size(linesArr) - 1
             line.delete(array.get(linesArr, i))
         for i = 0 to array.size(labelsArr) - 1
@@ -254,7 +319,7 @@ draw_side(_s, _p, _iv, _col) =>
         array.clear(linesArr)
         array.clear(labelsArr)
 
-        // ارسم الجديد
+        // draw fresh
         for i = 0 to array.size(_s) - 1
             y  = array.get(_s, i)
             p  = array.get(_p, i)
@@ -268,86 +333,6 @@ draw_side(_s, _p, _iv, _col) =>
 
             array.push(linesArr, lineRef)
             array.push(labelsArr, labelRef)
-
-    // ✅ تحقق قبل رسم الأشرطة
-if array.size(_s) > 0 and array.size(_p) > 0 and array.size(_iv) > 0
-    // رسم الأشرطة الجديدة
-    for i = 0 to array.size(_s) - 1
-        y  = array.get(_s, i)
-        p  = array.get(_p, i)
-        iv = array.get(_iv, i)
-        alpha   = 90 - int(p * 70)
-        bar_col = color.new(_col, alpha)
-        bar_len = int(math.max(10, p * 100))
-        lineRef = line.new(bar_index + 3, y, bar_index + bar_len - 12, y, color=bar_col, width=6)
-        labelRef = label.new(bar_index + bar_len + 1, y,str.tostring(p*100, "#.##") + "%  |  IV " + str.tostring(iv*100, "#.##") + "%",style=label.style_none, textcolor=color.white, size=size.small)
-
-        array.push(linesArr, lineRef)
-        array.push(labelsArr, labelRef)
-
-
-// ====== HVL Smart Zone (Gamma Direction Aware) ======
-var float[] wc_iv = {arr_or_empty(wc_iv)}
-var float[] mc_iv = {arr_or_empty(mc_iv)}
-var float[] wc_s  = {arr_or_empty(wc_s)}
-var float[] mc_s  = {arr_or_empty(mc_s)}
-var float[] wc_p  = {arr_or_empty(wc_p)}
-var float[] mc_p  = {arr_or_empty(mc_p)}
-
-// ====== HVL Smart Zone (Gamma Direction Aware) ======
-var line  hvl_top   = na
-var line  hvl_bot   = na
-var label hvl_label = na
-var box   hvl_box   = na
-
-showHVL   = input.bool(true, "Show HVL Smart Zone", group="GEX HVL")
-baseColor = input.color(color.new(color.yellow, 0), "Neutral Zone Color", group="GEX HVL")
-zoneWidth = input.float(1.0, "Zone Width %", minval=0.2, maxval=5.0, group="GEX HVL")
-
-float max_iv = 0.0
-float hvl_y  = na
-int   idx    = na
-
-if showHVL
-    src_iv  = mode == "Weekly"  ? wc_iv : mc_iv
-    src_str = mode == "Weekly"  ? wc_s  : mc_s
-    src_p   = mode == "Weekly"  ? wc_p  : mc_p
-
-    for i = 0 to array.size(src_iv) - 1
-        iv = array.get(src_iv, i)
-        if iv > max_iv
-            max_iv := iv
-            hvl_y  := array.get(src_str, i)
-            idx    := i
-
-    if not na(hvl_y)
-        up_val = na(idx) or idx + 1 >= array.size(src_p) ? na : array.get(src_p, idx + 1)
-        dn_val = na(idx) or idx - 1 < 0 ? na : array.get(src_p, idx - 1)
-        colHVL = baseColor
-
-        if not na(up_val) and not na(dn_val)
-            if up_val > dn_val
-                colHVL := color.new(color.lime, 0)
-            else if up_val < dn_val
-                colHVL := color.new(color.red, 0)
-
-        if not na(hvl_top)
-            line.delete(hvl_top)
-        if not na(hvl_bot)
-            line.delete(hvl_bot)
-        if not na(hvl_label)
-            label.delete(hvl_label)
-        if not na(hvl_box)
-            box.delete(hvl_box)
-
-        hvl_top_y = hvl_y * (1 + zoneWidth / 100)
-        hvl_bot_y = hvl_y * (1 - zoneWidth / 100)
-
-        hvl_box := box.new(left = bar_index - 5, top = hvl_top_y, right = bar_index + 5, bottom = hvl_bot_y, bgcolor = color.new(colHVL, 85), border_color = color.new(colHVL, 50))
-        hvl_top := line.new(bar_index - 10, hvl_top_y, bar_index + 10, hvl_top_y, extend = extend.both, color = color.new(colHVL, 0), width = 1, style = line.style_dotted)
-        hvl_bot := line.new(bar_index - 10, hvl_bot_y, bar_index + 10, hvl_bot_y, extend = extend.both, color = color.new(colHVL, 0), width = 1, style = line.style_dotted)
-        hvl_label := label.new(bar_index + 5, hvl_y, "HVL " + str.tostring(hvl_y, "#.##") + (colHVL == color.lime ? "  (🟢)" : colHVL == color.red ? "  (🔴)" : "  (🟡)") + " ±" + str.tostring(zoneWidth, "#.##") + "%", style = label.style_label_left, textcolor = color.black, color = colHVL, size = size.small)
-
 
 {''.join(blocks)}
 
@@ -432,25 +417,7 @@ for x = 0 to array.size(sr_levels) - 1
     if not na(lvl)
         col = lvl < c240 ? color.new(color.lime, 0) : color.new(color.red, 0)
         array.set(sr_lines, x, line.new(bar_index - 1, lvl, bar_index, lvl, color=col, width=1, style=style, extend=extend.both))
-
-// labels for highest/lowest (from 240m series)
-var label highestLabel = na
-var label lowestLabel  = na
-if drawhl
-    newHigh = ta.highest(h240, prd)
-    newLow  = ta.lowest(l240,  prd)
-    if na(highestLabel) or label.get_y(highestLabel) != newHigh
-        if not na(highestLabel)
-            label.delete(highestLabel)
-        highestLabel := label.new(bar_index + label_location, newHigh, "Highest PH " + str.tostring(newHigh),
-                                  color=color.new(color.silver, 0), textcolor=color.black, style=label.style_label_down)
-    if na(lowestLabel) or label.get_y(lowestLabel) != newLow
-        if not na(lowestLabel)
-            label.delete(lowestLabel)
-        lowestLabel := label.new(bar_index + label_location, newLow, "Lowest PL " + str.tostring(newLow),
-                                 color=color.new(color.silver, 0), textcolor=color.black, style=label.style_label_up)
 """
-
     return Response(pine, mimetype="text/plain")
 
 
@@ -492,7 +459,7 @@ def home():
     return jsonify({
         "status": "OK ✅",
         "symbols": SYMBOLS,
-        "author": "Bassam GEX PRO v4.4 – SmartCache Edition",
+        "author": "Bassam GEX PRO v4.6 – SmartCache Edition",
         "interval": "240m ثابت",
         "update": "كل ساعة تلقائيًا",
         "usage": {"all_pine": "/all/pine", "all_json": "/all/json"},
@@ -502,4 +469,3 @@ def home():
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8000)))
-
