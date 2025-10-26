@@ -262,9 +262,10 @@ int   idx    = na
 
 if showHVL
     // مصفوفات افتراضية (سيتم استبدالها تلقائياً من السيرفر)
-    src_iv  = mode == "Weekly"  ? array.from(0.0) : array.from(0.0)
-    src_str = mode == "Weekly"  ? array.from(0.0) : array.from(0.0)
-    src_p   = mode == "Weekly"  ? array.from(0.0) : array.from(0.0)
+    src_iv  = mode == "Weekly"  ? wc_iv : mc_iv
+    src_str = mode == "Weekly"  ? wc_s  : mc_s
+    src_p   = mode == "Weekly"  ? wc_p  : mc_p
+
 
     // تحديد أعلى IV
     for i = 0 to array.size(src_iv) - 1
