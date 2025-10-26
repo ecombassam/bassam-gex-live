@@ -264,16 +264,6 @@ if syminfo.ticker == "{sym}"
     src_p   = useWeekly ? {arr_or_empty(wc_p)}  : {arr_or_empty(mc_p)}
 """
 
-
-    // -------- HVL Smart Zone --------
-    w_iv = {arr_or_empty(wc_iv)}
-    w_s  = {arr_or_empty(wc_s)}
-    w_p  = {arr_or_empty(wc_p)}
-    m_iv = {arr_or_empty(mc_iv)}
-    m_s  = {arr_or_empty(mc_s)}
-    m_p  = {arr_or_empty(mc_p)}
-
-
     var line  h_top = na
     var line  h_bot = na
     var label h_lab = na
