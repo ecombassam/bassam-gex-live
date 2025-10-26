@@ -2,7 +2,7 @@
 # Bassam GEX PRO v4.6 – SmartCache Edition
 # Multi-Symbol SmartMode + IV% + AskGroup (240m) + Hourly Cache
 # AutoMonthFix (show Monthly when Weekly coincides with month-end Friday)
-# HVL arrays & drawing scoped per-symbol to avoid collisions
+# HVL arrays & drawing scoped per-symbol to avoid collisions 
 # ============================================================
 
 import os, json, datetime as dt, requests, time
