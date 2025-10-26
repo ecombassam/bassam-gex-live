@@ -172,6 +172,7 @@ def update_symbol_data(symbol):
     exp_m = nearest_monthly(expiries)
 
     # AutoMonthFix: if the weekly Friday equals the monthly last Friday,
+    # AutoMonthFix: if the weekly Friday equals the monthly last Friday,
     # use the monthly set for both (so Weekly bars won't be empty)
     use_monthly_for_weekly = (exp_w == exp_m)
 
