@@ -139,8 +139,16 @@ def normalize_for_pine(data):
     return strikes, pcts, ivs
 
 
-def to_pine_array(arr):
-    return ",".join(f"{float(x):.6f}" for x in arr if x is not None)
+def arr_or_empty(arr, typename="float"):
+    """
+    تُرجع تعبير Pine صحيح:
+    - إذا المصفوفة فاضية → array.new_float()
+    - إذا فيها عناصر → array.from(<القيم>)
+    """
+    if not arr:
+        return f"array.new_{typename}()"
+    return f"array.from({','.join(f'{float(x):.6f}' for x in arr if x is not None)})"
+
 # ============================================================
 # دالة مساعدة لتفادي الخطأ عند غياب البيانات
 # ============================================================
@@ -279,12 +287,12 @@ if array.size(_s) > 0 and array.size(_p) > 0 and array.size(_iv) > 0
 
 
 // ====== HVL Smart Zone (Gamma Direction Aware) ======
-var float[] wc_iv = array.from({to_pine_array(wc_iv)})
-var float[] mc_iv = array.from({to_pine_array(mc_iv)})
-var float[] wc_s  = array.from({to_pine_array(wc_s)})
-var float[] mc_s  = array.from({to_pine_array(mc_s)})
-var float[] wc_p  = array.from({to_pine_array(wc_p)})
-var float[] mc_p  = array.from({to_pine_array(mc_p)})
+var float[] wc_iv = {arr_or_empty(wc_iv)}
+var float[] mc_iv = {arr_or_empty(mc_iv)}
+var float[] wc_s  = {arr_or_empty(wc_s)}
+var float[] mc_s  = {arr_or_empty(mc_s)}
+var float[] wc_p  = {arr_or_empty(wc_p)}
+var float[] mc_p  = {arr_or_empty(mc_p)}
 
 // ====== HVL Smart Zone (Gamma Direction Aware) ======
 var line  hvl_top   = na
@@ -296,42 +304,33 @@ showHVL   = input.bool(true, "Show HVL Smart Zone", group="GEX HVL")
 baseColor = input.color(color.new(color.yellow, 0), "Neutral Zone Color", group="GEX HVL")
 zoneWidth = input.float(1.0, "Zone Width %", minval=0.2, maxval=5.0, group="GEX HVL")
 
-// ✅ تعريف المتغيرات بنوعها من البداية
 float max_iv = 0.0
 float hvl_y  = na
 int   idx    = na
 
 if showHVL
-    // مصفوفات افتراضية (سيتم استبدالها تلقائياً من السيرفر)
     src_iv  = mode == "Weekly"  ? wc_iv : mc_iv
     src_str = mode == "Weekly"  ? wc_s  : mc_s
     src_p   = mode == "Weekly"  ? wc_p  : mc_p
 
-    // ✅ تحقق قبل الحلقة
-    if array.size(src_iv) > 0
-        // تحديد أعلى IV
-        for i = 0 to array.size(src_iv) - 1
-            iv = array.get(src_iv, i)
-            if iv > max_iv
-                max_iv := iv
-                hvl_y  := array.get(src_str, i)
-                idx    := i
+    for i = 0 to array.size(src_iv) - 1
+        iv = array.get(src_iv, i)
+        if iv > max_iv
+            max_iv := iv
+            hvl_y  := array.get(src_str, i)
+            idx    := i
 
-
-    // إذا وُجدت قيمة واضحة
     if not na(hvl_y)
         up_val = na(idx) or idx + 1 >= array.size(src_p) ? na : array.get(src_p, idx + 1)
         dn_val = na(idx) or idx - 1 < 0 ? na : array.get(src_p, idx - 1)
         colHVL = baseColor
 
-        // تحديد الاتجاه اللوني
         if not na(up_val) and not na(dn_val)
             if up_val > dn_val
                 colHVL := color.new(color.lime, 0)
             else if up_val < dn_val
                 colHVL := color.new(color.red, 0)
 
-        // حذف القديم
         if not na(hvl_top)
             line.delete(hvl_top)
         if not na(hvl_bot)
@@ -341,15 +340,13 @@ if showHVL
         if not na(hvl_box)
             box.delete(hvl_box)
 
-        // رسم المنطقة الجديدة
         hvl_top_y = hvl_y * (1 + zoneWidth / 100)
         hvl_bot_y = hvl_y * (1 - zoneWidth / 100)
 
-        hvl_box := box.new(left = bar_index - 5, top = hvl_top_y,right = bar_index + 5, bottom = hvl_bot_y,bgcolor = color.new(colHVL, 85),border_color = color.new(colHVL, 50))
-        hvl_box := box.new(left = bar_index - 5, top = hvl_top_y, right = bar_index + 5, bottom = hvl_bot_y,bgcolor = color.new(colHVL, 85), border_color = color.new(colHVL, 50))
-        hvl_top := line.new(bar_index - 10, hvl_top_y, bar_index + 10, hvl_top_y,extend = extend.both, color = color.new(colHVL, 0),width = 1, style = line.style_dotted)
-        hvl_bot := line.new(bar_index - 10, hvl_bot_y, bar_index + 10, hvl_bot_y,extend = extend.both, color = color.new(colHVL, 0),width = 1, style = line.style_dotted)
-        hvl_label := label.new(bar_index + 5, hvl_y,"HVL " + str.tostring(hvl_y, "#.##") +(colHVL == color.lime ? "  (🟢 )" :colHVL == color.red ? "  (🔴 )" : "  (🟡 )") +"  ±" + str.tostring(zoneWidth, "#.##") + "%",style = label.style_label_left,textcolor = color.black, color = colHVL, size = size.small)
+        hvl_box := box.new(left = bar_index - 5, top = hvl_top_y, right = bar_index + 5, bottom = hvl_bot_y, bgcolor = color.new(colHVL, 85), border_color = color.new(colHVL, 50))
+        hvl_top := line.new(bar_index - 10, hvl_top_y, bar_index + 10, hvl_top_y, extend = extend.both, color = color.new(colHVL, 0), width = 1, style = line.style_dotted)
+        hvl_bot := line.new(bar_index - 10, hvl_bot_y, bar_index + 10, hvl_bot_y, extend = extend.both, color = color.new(colHVL, 0), width = 1, style = line.style_dotted)
+        hvl_label := label.new(bar_index + 5, hvl_y, "HVL " + str.tostring(hvl_y, "#.##") + (colHVL == color.lime ? "  (🟢)" : colHVL == color.red ? "  (🔴)" : "  (🟡)") + " ±" + str.tostring(zoneWidth, "#.##") + "%", style = label.style_label_left, textcolor = color.black, color = colHVL, size = size.small)
 
 
 {''.join(blocks)}
