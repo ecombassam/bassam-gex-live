@@ -161,12 +161,14 @@ def update_symbol_data(symbol):
     exp_w = nearest_weekly(expiries)
     exp_m = nearest_monthly(expiries)
 
-    # ✅ تصحيح: إذا كان تاريخ الأسبوعي يطابق الشهري، نعتبره شهري فقط
-    if exp_w == exp_m:
-        exp_w = None
+    # ✅ منطق جديد: إذا الجمعة الأسبوعية = الجمعة الأخيرة في الشهر → استخدم الشهري بدل الأسبوعي
+    use_monthly_for_weekly = (exp_w == exp_m)
 
-    # جلب البيانات
-    _, w_calls, w_puts = analyze_oi_iv(rows, exp_w, 3) if exp_w else (None, [], [])
+    if use_monthly_for_weekly:
+        _, w_calls, w_puts = analyze_oi_iv(rows, exp_m, 3)  # استخدم الشهري بدل الأسبوعي
+    else:
+        _, w_calls, w_puts = analyze_oi_iv(rows, exp_w, 3) if exp_w else (None, [], [])
+
     _, m_calls, m_puts = analyze_oi_iv(rows, exp_m, 6)
 
     return {
@@ -227,18 +229,37 @@ indicator("GEX PRO • SmartMode + IV% + AskGroup (240m)", overlay=true, max_lin
 mode = input.string("Weekly", "Expiry Mode", options=["Weekly","Monthly"], group="Settings")
 
 draw_side(_s, _p, _iv, _col) =>
-    // مسح العناصر القديمة
-    var linesArr = array.new_line()
-    var labelsArr = array.new_label()
+    // لا ترسم إذا أي مصفوفة فاضية
+    if array.size(_s) == 0 or array.size(_p) == 0 or array.size(_iv) == 0
+        // لا شي
+        na
+    else
+        // مصفوفات ثابتة تحتفظ بالمراجع لمسح الرسوم القديمة
+        var line[]  linesArr  = array.new_line()
+        var label[] labelsArr = array.new_label()
 
-    // حذف الموجود مسبقًا
-    for l in linesArr
-        line.delete(l)
-    for lb in labelsArr
-        label.delete(lb)
+        // امسح القديم
+        for i = 0 to array.size(linesArr) - 1
+            line.delete(array.get(linesArr, i))
+        for i = 0 to array.size(labelsArr) - 1
+            label.delete(array.get(labelsArr, i))
+        array.clear(linesArr)
+        array.clear(labelsArr)
 
-    array.clear(linesArr)
-    array.clear(labelsArr)
+        // ارسم الجديد
+        for i = 0 to array.size(_s) - 1
+            y  = array.get(_s, i)
+            p  = array.get(_p, i)
+            iv = array.get(_iv, i)
+            alpha   = 90 - int(p * 70)
+            bar_col = color.new(_col, alpha)
+            bar_len = int(math.max(10, p * 100))
+
+            lineRef  = line.new(bar_index + 3, y, bar_index + bar_len - 12, y, color=bar_col, width=6)
+            labelRef = label.new(bar_index + bar_len + 1, y,str.tostring(p*100, "#.##") + "%  |  IV " + str.tostring(iv*100, "#.##") + "%",style=label.style_none, textcolor=color.white, size=size.small)
+
+            array.push(linesArr, lineRef)
+            array.push(labelsArr, labelRef)
 
     // ✅ تحقق قبل رسم الأشرطة
 if array.size(_s) > 0 and array.size(_p) > 0 and array.size(_iv) > 0
