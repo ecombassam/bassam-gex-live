@@ -303,23 +303,25 @@ if syminfo.ticker == "{sym}"
 indicator("GEX PRO • SmartMode + IV% + AskGroup (240m)", overlay=true, max_lines_count=500, max_labels_count=500)
 mode = input.string("Weekly", "Expiry Mode", options=["Weekly","Monthly"], group="Settings")
 
-// --- draw_side: renders horizontal bars for strikes ---
 draw_side(_s, _p, _iv, _col) =>
+    // إذا المصفوفات فاضية أو بدون عناصر
     if array.size(_s) == 0 or array.size(_p) == 0 or array.size(_iv) == 0
+        // لا ترسم شيء
         na
     else
+        // مصفوفات ثابتة
         var line[]  linesArr  = array.new_line()
         var label[] labelsArr = array.new_label()
 
-        // clear previous
-        for i = 0 to array.size(linesArr) - 1
-            line.delete(array.get(linesArr, i))
-        for i = 0 to array.size(labelsArr) - 1
-            label.delete(array.get(labelsArr, i))
+        // امسح القديم
+        for l in linesArr
+            line.delete(l)
+        for lb in labelsArr
+            label.delete(lb)
         array.clear(linesArr)
         array.clear(labelsArr)
 
-        // draw fresh
+        // ارسم الجديد
         for i = 0 to array.size(_s) - 1
             y  = array.get(_s, i)
             p  = array.get(_p, i)
@@ -327,12 +329,11 @@ draw_side(_s, _p, _iv, _col) =>
             alpha   = 90 - int(p * 70)
             bar_col = color.new(_col, alpha)
             bar_len = int(math.max(10, p * 100))
-
             lineRef  = line.new(bar_index + 3, y, bar_index + bar_len - 12, y, color=bar_col, width=6)
-            labelRef = label.new(bar_index + bar_len + 1, y,str.tostring(p*100, "#.##") + "%  |  IV " + str.tostring(iv*100, "#.##") + "%",style=label.style_none, textcolor=color.white, size=size.small)
-
+            labelRef = label.new(bar_index + bar_len + 1, y, str.tostring(p*100, "#.##") + "% | IV " + str.tostring(iv*100, "#.##") + "%", style=label.style_none, textcolor=color.white, size=size.small)
             array.push(linesArr, lineRef)
             array.push(labelsArr, labelRef)
+
 
 {''.join(blocks)}
 
@@ -418,7 +419,22 @@ for x = 0 to array.size(sr_levels) - 1
         col = lvl < c240 ? color.new(color.lime, 0) : color.new(color.red, 0)
         array.set(sr_lines, x, line.new(bar_index - 1, lvl, bar_index, lvl, color=col, width=1, style=style, extend=extend.both))
 """
-    return Response(pine, mimetype="text/plain")
+// ===== labels for highest/lowest (from 240m series)
+var label highestLabel = na
+var label lowestLabel  = na
+if drawhl
+    newHigh = ta.highest(h240, prd)
+    newLow  = ta.lowest(l240,  prd)
+    if na(highestLabel) or label.get_y(highestLabel) != newHigh
+        if not na(highestLabel)
+            label.delete(highestLabel)
+        highestLabel := label.new(bar_index + label_location, newHigh, "Highest PH " + str.tostring(newHigh),color=color.new(color.silver, 0), textcolor=color.black, style=label.style_label_down)
+    if na(lowestLabel) or label.get_y(lowestLabel) != newLow
+        if not na(lowestLabel)
+            label.delete(lowestLabel)
+        lowestLabel := label.new(bar_index + label_location, newLow, "Lowest PL " + str.tostring(newLow),color=color.new(color.silver, 0), textcolor=color.black, style=label.style_label_up)
+    
+return Response(pine, mimetype="text/plain")
 
 
 # ============================================================
