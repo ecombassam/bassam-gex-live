@@ -428,13 +428,14 @@ if drawhl
     if na(highestLabel) or label.get_y(highestLabel) != newHigh
         if not na(highestLabel)
             label.delete(highestLabel)
-        highestLabel := label.new(bar_index + label_location, newHigh, "Highest PH " + str.tostring(newHigh),color=color.new(color.silver, 0), textcolor=color.black, style=label.style_label_down)
+        highestLabel := label.new(bar_index + label_location, newHigh, "Highest PH " + str.tostring(newHigh), color=color.new(color.silver, 0), textcolor=color.black, style=label.style_label_down)
     if na(lowestLabel) or label.get_y(lowestLabel) != newLow
         if not na(lowestLabel)
             label.delete(lowestLabel)
-        lowestLabel := label.new(bar_index + label_location, newLow, "Lowest PL " + str.tostring(newLow),color=color.new(color.silver, 0), textcolor=color.black, style=label.style_label_up)
+        lowestLabel := label.new(bar_index + label_location, newLow, "Lowest PL " + str.tostring(newLow), color=color.new(color.silver, 0), textcolor=color.black, style=label.style_label_up)
 """
 return Response(pine, mimetype="text/plain")
+
 
 
 # ============================================================
