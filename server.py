@@ -141,6 +141,12 @@ def normalize_for_pine(data):
 
 def to_pine_array(arr):
     return ",".join(f"{float(x):.6f}" for x in arr if x is not None)
+# ============================================================
+# دالة مساعدة لتفادي الخطأ عند غياب البيانات
+# ============================================================
+def arr_or_empty(arr):
+    txt = to_pine_array(arr)
+    return f"array.from({txt})" if txt else "array.new_float()"
 
 
 # ============================================================
@@ -206,8 +212,8 @@ def all_pine():
 if syminfo.ticker == "{sym}"
     title = "GEX PRO • " + mode + " | {sym}"
     if mode == "Weekly"
-        draw_side(array.from({to_pine_array(wc_s)}), array.from({to_pine_array(wc_p)}), array.from({to_pine_array(wc_iv)}), color.lime)
-        draw_side(array.from({to_pine_array(wp_s)}), array.from({to_pine_array(wp_p)}), array.from({to_pine_array(wp_iv)}), color.red)
+        draw_side({arr_or_empty(wc_s)}, {arr_or_empty(wc_p)}, {arr_or_empty(wc_iv)}, color.lime)
+        draw_side({arr_or_empty(wp_s)}, {arr_or_empty(wp_p)}, {arr_or_empty(wp_iv)}, color.red)
     if mode == "Monthly"
         draw_side(array.from({to_pine_array(mc_s)}), array.from({to_pine_array(mc_p)}), array.from({to_pine_array(mc_iv)}), color.new(color.green, 0))
         draw_side(array.from({to_pine_array(mp_s)}), array.from({to_pine_array(mp_p)}), array.from({to_pine_array(mp_iv)}), color.new(#b02727, 0))
@@ -313,14 +319,7 @@ if showHVL
         hvl_top_y = hvl_y * (1 + zoneWidth / 100)
         hvl_bot_y = hvl_y * (1 - zoneWidth / 100)
 
-        hvl_box := box.new(
-            left = bar_index - 5, top = hvl_top_y,
-            right = bar_index + 5, bottom = hvl_bot_y,
-            bgcolor = color.new(colHVL, 85),
-            border_color = color.new(colHVL, 50)
-        )
-
-
+        hvl_box := box.new(left = bar_index - 5, top = hvl_top_y,right = bar_index + 5, bottom = hvl_bot_y,bgcolor = color.new(colHVL, 85),border_color = color.new(colHVL, 50))
         hvl_box := box.new(left = bar_index - 5, top = hvl_top_y, right = bar_index + 5, bottom = hvl_bot_y,bgcolor = color.new(colHVL, 85), border_color = color.new(colHVL, 50))
         hvl_top := line.new(bar_index - 10, hvl_top_y, bar_index + 10, hvl_top_y,extend = extend.both, color = color.new(colHVL, 0),width = 1, style = line.style_dotted)
         hvl_bot := line.new(bar_index - 10, hvl_bot_y, bar_index + 10, hvl_bot_y,extend = extend.both, color = color.new(colHVL, 0),width = 1, style = line.style_dotted)
