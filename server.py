@@ -236,7 +236,7 @@ def all_pine():
 
         # هل الأسبوعي يطابق الشهري (آخر جمعة في الشهر)؟ جاء من update_symbol_data
         dup_str = "true" if data.get("duplicate") else "false"
-
+        short_calls_iv = []
         # Per-symbol Pine block (لا تُغيّر الهوامش)
         block = f"""
 //========= {sym} =========
