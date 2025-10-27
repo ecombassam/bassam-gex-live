@@ -336,6 +336,9 @@ if syminfo.ticker == "{sym}"
             h_lab := label.new(bar_index + 5, hvl_y, "HVL " + str.tostring(hvl_y, "#.##") + (colHVL == color.lime ? "  (🟢)" : colHVL == color.red ? "  (🔴)" : "  (🟡)") + " ±" + str.tostring(zoneWidth, "#.##") + "%", style = label.style_label_left, textcolor = color.black, color = colHVL, size = size.small)
   
     // ===== HVL Dual View (Weekly & Monthly) =====
+    var label hvlWeeklyLabel = na
+    var label hvlMonthlyLabel = na
+
     if showHVL
         // — Weekly HVL —
         int   w_idx = na
@@ -347,7 +350,14 @@ if syminfo.ticker == "{sym}"
                 w_idx := i
         if not na(w_idx) and w_idx < array.size(w_s)
             yW = array.get(w_s, w_idx)
-            label.new(bar_index, yW, "HVL Weekly", color=color.new(color.red, 50), textcolor=color.white, style=label.style_label_left, size=size.tiny)
+            // احذف القديم ثم ارسم الجديد مرة واحدة
+            if not na(hvlWeeklyLabel)
+                label.delete(hvlWeeklyLabel)
+            hvlWeeklyLabel := label.new(bar_index, yW, "HVL Weekly",
+                color=color.new(color.red, 50),
+                textcolor=color.white,
+                style=label.style_label_left,
+                size=size.tiny)
 
         // — Monthly HVL —
         int   m_idx = na
@@ -359,10 +369,16 @@ if syminfo.ticker == "{sym}"
                 m_idx := j
         if not na(m_idx) and m_idx < array.size(m_s)
             yM = array.get(m_s, m_idx)
-            label.new(bar_index, yM, "HVL Monthly", color=color.new(color.aqua, 0), textcolor=color.black, style=label.style_label_left, size=size.tiny)
-
+            if not na(hvlMonthlyLabel)
+                label.delete(hvlMonthlyLabel)
+            hvlMonthlyLabel := label.new(bar_index, yM, "HVL Monthly",
+                color=color.new(color.aqua, 0),
+                textcolor=color.black,
+                style=label.style_label_left,
+                size=size.tiny)
 """
-        blocks.append(block)
+    blocks.append(block)
+
 
     # طابع زمني (آخر تحديث) بتوقيت الرياض
     now = dt.datetime.now(dt.timezone(dt.timedelta(hours=3)))
