@@ -220,15 +220,15 @@ def all_pine():
         mc_s, mc_p, mc_iv = normalize_for_pine(data["monthly"]["calls"])
         mp_s, mp_p, mp_iv = normalize_for_pine(data["monthly"]["puts"])
 
-        # هل الأسبوعي يطابق الشهري (آخر جمعة في الشهر)
+        # هل الأسبوعي يطابق الشهري (آخر جمعة في الشهر)؟ جاء من update_symbol_data
         dup_str = "true" if data.get("duplicate") else "false"
 
-        # Per-symbol Pine block
-block = f"""
+        # Per-symbol Pine block (لا تُغيّر الهوامش)
+        block = f"""
 //========= {sym} =========
 if syminfo.ticker == "{sym}"
     title = "GEX PRO • " + mode + " | {sym}"
-    duplicate_expiry = { 'true' if data.get('duplicate') else 'false' }
+    duplicate_expiry = {dup_str}
 
     // -------- منطق العرض --------
     bool showWeekly = false
@@ -238,15 +238,15 @@ if syminfo.ticker == "{sym}"
         if duplicate_expiry
             // آخر جمعة في الشهر → تجاهل الأسبوعي وأظهر الشهري فقط
             showMonthly := true
-            showWeekly := false
+            showWeekly  := false
         else
             // جمعة عادية → أظهر الأسبوعي فقط
-            showWeekly := true
+            showWeekly  := true
             showMonthly := false
     else if mode == "Monthly"
         // المستخدم اختار الشهري → أظهر الشهري فقط دائمًا
         showMonthly := true
-        showWeekly := false
+        showWeekly  := false
 
     // -------- GEX bars --------
     if showWeekly
@@ -258,11 +258,19 @@ if syminfo.ticker == "{sym}"
         draw_side(array.from({to_pine_array(mp_s)}), array.from({to_pine_array(mp_p)}), array.from({to_pine_array(mp_iv)}), color.new(#b02727, 0))
 
     // -------- HVL Smart Zone --------
-    useWeekly = showWeekly and (array.size({arr_or_empty(wc_iv)}) > 0)
-    src_iv  = useWeekly ? {arr_or_empty(wc_iv)} : {arr_or_empty(mc_iv)}
-    src_str = useWeekly ? {arr_or_empty(wc_s)}  : {arr_or_empty(mc_s)}
-    src_p   = useWeekly ? {arr_or_empty(wc_p)}  : {arr_or_empty(mc_p)}
-"""
+    // جهّز مصفوفات الأسبوعي/الشهري
+    w_iv = {arr_or_empty(wc_iv)}
+    w_s  = {arr_or_empty(wc_s)}
+    w_p  = {arr_or_empty(wc_p)}
+    m_iv = {arr_or_empty(mc_iv)}
+    m_s  = {arr_or_empty(mc_s)}
+    m_p  = {arr_or_empty(mc_p)}
+
+    // اختر المصدر: Weekly فقط إذا مطلوب ويحتوي بيانات، وإلا Monthly
+    useWeekly = showWeekly and (array.size(w_iv) > 0)
+    src_iv  = useWeekly ? w_iv : m_iv
+    src_str = useWeekly ? w_s  : m_s
+    src_p   = useWeekly ? w_p  : m_p
 
     var line  h_top = na
     var line  h_bot = na
@@ -289,6 +297,7 @@ if syminfo.ticker == "{sym}"
             up_val = na(idx) or idx + 1 >= array.size(src_p) ? na : array.get(src_p, idx + 1)
             dn_val = na(idx) or idx - 1 < 0 ? na : array.get(src_p, idx - 1)
             colHVL = baseColor
+
             if not na(up_val) and not na(dn_val)
                 if up_val > dn_val
                     colHVL := color.new(color.lime, 0)
@@ -312,36 +321,31 @@ if syminfo.ticker == "{sym}"
             h_bot := line.new(bar_index - 10, h_bot_y, bar_index + 10, h_bot_y, extend = extend.both, color = color.new(colHVL, 0), width = 1, style = line.style_dotted)
             h_lab := label.new(bar_index + 5, hvl_y, "HVL " + str.tostring(hvl_y, "#.##") + (colHVL == color.lime ? "  (🟢)" : colHVL == color.red ? "  (🔴)" : "  (🟡)") + " ±" + str.tostring(zoneWidth, "#.##") + "%", style = label.style_label_left, textcolor = color.black, color = colHVL, size = size.small)
 """
-            blocks.append(block)
+        blocks.append(block)
 
-    now = dt.datetime.now(dt.timezone(dt.timedelta(hours=3)))  # توقيت الرياض
+    # طابع زمني (آخر تحديث) بتوقيت الرياض
+    now = dt.datetime.now(dt.timezone(dt.timedelta(hours=3)))
     last_update = now.strftime("%Y-%m-%d %H:%M:%S")
 
-    # ===== Build full Pine code =====
+    # ===== بناء كود Pine الكامل =====
     pine = f"""//@version=5
-// Last Update: {last_update} 
+// Last Update (Riyadh): {last_update}
 indicator("GEX PRO • SmartMode + IV% + AskGroup (240m)", overlay=true, max_lines_count=500, max_labels_count=500)
-mode = input.string("Weekly", "Expiry Mode", options=["Weekly","Monthly"])
+mode = input.string("Weekly", "Expiry Mode", options=["Weekly","Monthly"], group="Settings")
 
+// --- draw_side: يرسم أعمدة أفقية لكل strike ---
 draw_side(_s, _p, _iv, _col) =>
-    // إذا المصفوفات فاضية أو بدون عناصر
     if array.size(_s) == 0 or array.size(_p) == 0 or array.size(_iv) == 0
-        // لا ترسم شيء
         na
     else
-        // مصفوفات ثابتة
         var line[]  linesArr  = array.new_line()
         var label[] labelsArr = array.new_label()
-
-        // امسح القديم
         for l in linesArr
             line.delete(l)
         for lb in labelsArr
             label.delete(lb)
         array.clear(linesArr)
         array.clear(labelsArr)
-
-        // ارسم الجديد
         for i = 0 to array.size(_s) - 1
             y  = array.get(_s, i)
             p  = array.get(_p, i)
@@ -353,7 +357,6 @@ draw_side(_s, _p, _iv, _col) =>
             labelRef = label.new(bar_index + bar_len + 1, y, str.tostring(p*100, "#.##") + "% | IV " + str.tostring(iv*100, "#.##") + "%", style=label.style_none, textcolor=color.white, size=size.small)
             array.push(linesArr, lineRef)
             array.push(labelsArr, labelRef)
-
 
 {''.join(blocks)}
 
@@ -454,9 +457,8 @@ if drawhl
             label.delete(lowestLabel)
         lowestLabel := label.new(bar_index + label_location, newLow, "Lowest PL " + str.tostring(newLow), color=color.new(color.silver, 0), textcolor=color.black, style=label.style_label_up)
 """
+
     return Response(pine, mimetype="text/plain")
-
-
 
 # ============================================================
 # /all/json endpoint
