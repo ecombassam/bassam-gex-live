@@ -377,8 +377,7 @@ if syminfo.ticker == "{sym}"
                 style=label.style_label_left,
                 size=size.tiny)
 """
-    blocks.append(block)
-
+        blocks.append(block)
 
     # طابع زمني (آخر تحديث) بتوقيت الرياض
     now = dt.datetime.now(dt.timezone(dt.timedelta(hours=3)))
@@ -387,8 +386,7 @@ if syminfo.ticker == "{sym}"
     # ===== بناء كود Pine الكامل =====
     pine = f"""//@version=5
 // Last Update (Riyadh): {last_update}
-indicator("GEX PRO • SmartMode + IV% + AskGroup (240m)", overlay=true, max_lines_count=500, max_labels_count=500)
-mode = input.string("Weekly", "Expiry Mode", options=["Weekly","Monthly"], group="Settings")
+indicator("GEX PRO • SmartMode + IV% + AskGroup (240m)", overlay=true, max_lines_count=500, max_labels_count=500)mode = input.string("Weekly", "Expiry Mode", options=["Weekly","Monthly"], group="Settings")
 
 // --- draw_side: يرسم أعمدة أفقية لكل strike ---
 draw_side(_s, _p, _iv, _col) =>
