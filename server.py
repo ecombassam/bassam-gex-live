@@ -335,14 +335,32 @@ if syminfo.ticker == "{sym}"
             h_bot := line.new(bar_index - 10, h_bot_y, bar_index + 10, h_bot_y, extend = extend.both, color = color.new(colHVL, 0), width = 1, style = line.style_dotted)
             h_lab := label.new(bar_index + 5, hvl_y, "HVL " + str.tostring(hvl_y, "#.##") + (colHVL == color.lime ? "  (🟢)" : colHVL == color.red ? "  (🔴)" : "  (🟡)") + " ±" + str.tostring(zoneWidth, "#.##") + "%", style = label.style_label_left, textcolor = color.black, color = colHVL, size = size.small)
   
-    // ===== HVL Dual View =====
+    // ===== HVL Dual View (Weekly & Monthly) =====
     if showHVL
-       // قصيرة المدى (4DTE)
-       hvl_short = ta.highest(array.get(array.from({to_pine_array(short_calls_iv)}), 0), 1)
-       label.new(bar_index, hvl_short, "HVL 4DTE", color=color.new(color.aqua, 0), textcolor=color.black)
-       // الأسبوعية
-       hvl_weekly = ta.highest(array.get(array.from({to_pine_array(wc_iv)}), 0), 1)
-       label.new(bar_index, hvl_weekly, "HVL Weekly", color=color.new(color.red, 50), textcolor=color.white)
+        // — Weekly HVL —
+        int   w_idx = na
+        float w_max = -1e10
+        for i = 0 to array.size(w_iv) - 1
+            v = array.get(w_iv, i)
+            if v > w_max
+                w_max := v
+                w_idx := i
+        if not na(w_idx) and w_idx < array.size(w_s)
+            yW = array.get(w_s, w_idx)
+            label.new(bar_index, yW, "HVL Weekly", color=color.new(color.red, 50), textcolor=color.white, style=label.style_label_left, size=size.tiny)
+
+        // — Monthly HVL —
+        int   m_idx = na
+        float m_max = -1e10
+        for j = 0 to array.size(m_iv) - 1
+            v2 = array.get(m_iv, j)
+            if v2 > m_max
+                m_max := v2
+                m_idx := j
+        if not na(m_idx) and m_idx < array.size(m_s)
+            yM = array.get(m_s, m_idx)
+            label.new(bar_index, yM, "HVL Monthly", color=color.new(color.aqua, 0), textcolor=color.black, style=label.style_label_left, size=size.tiny)
+
 """
         blocks.append(block)
 
