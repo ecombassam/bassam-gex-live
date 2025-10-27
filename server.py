@@ -241,7 +241,7 @@ def all_pine():
         block = f"""
 //========= {sym} =========
 if syminfo.ticker == "{sym}"
-    title = "GEX PRO • " + mode + " | {sym}"
+    title = " PRO • " + mode + " | {sym}"
     duplicate_expiry = {dup_str}
 
     bool showWeekly = false
@@ -283,9 +283,6 @@ if syminfo.ticker == "{sym}"
     var label h_lab = na
     var box   h_box = na
 
-    showHVL   = input.bool(true, "Show HVL Smart Zone", group="GEX HVL")
-    baseColor = input.color(color.new(color.yellow, 0), "Neutral Zone Color", group="GEX HVL")
-    zoneWidth = input.float(1.0, "Zone Width %", minval=0.2, maxval=5.0, group="GEX HVL")
 
     float max_iv = 0.0
     float hvl_y  = na
