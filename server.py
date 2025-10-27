@@ -183,16 +183,16 @@ def update_symbol_data(symbol):
 
     _, m_calls, m_puts = analyze_oi_iv(rows, exp_m, 6)
     # 🔹 HVL قصيرة المدى (4DTE فقط)
-exp_short = None
-today = dt.date.today()
-for d in expiries:
-    y, m, dd = map(int, d.split("-"))
-    exp_date = dt.date(y, m, dd)
+    exp_short = None
+    today = dt.date.today()
+        for d in expiries:
+        y, m, dd = map(int, d.split("-"))
+        exp_date = dt.date(y, m, dd)
     if 0 < (exp_date - today).days <= 4:
         exp_short = d
         break
 
-_, short_calls, short_puts = analyze_oi_iv(rows, exp_short, 3) if exp_short else (None, [], [])
+        _, short_calls, short_puts = analyze_oi_iv(rows, exp_short, 3) if exp_short else (None, [], [])
 
 
     return {
