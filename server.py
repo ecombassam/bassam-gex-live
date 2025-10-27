@@ -182,14 +182,28 @@ def update_symbol_data(symbol):
         _, w_calls, w_puts = analyze_oi_iv(rows, exp_w, 3) if exp_w else (None, [], [])
 
     _, m_calls, m_puts = analyze_oi_iv(rows, exp_m, 6)
+    # 🔹 HVL قصيرة المدى (4DTE فقط)
+exp_short = None
+today = dt.date.today()
+for d in expiries:
+    y, m, dd = map(int, d.split("-"))
+    exp_date = dt.date(y, m, dd)
+    if 0 < (exp_date - today).days <= 4:
+        exp_short = d
+        break
+
+_, short_calls, short_puts = analyze_oi_iv(rows, exp_short, 3) if exp_short else (None, [], [])
+
 
     return {
         "symbol": symbol,
+        "short": {"calls": short_calls, "puts": short_puts},  # HVL القصيرة
         "weekly": {"calls": w_calls, "puts": w_puts},
         "monthly": {"calls": m_calls, "puts": m_puts},
-        "duplicate": use_monthly_for_weekly,   # <-- أضف هذا
+        "duplicate": use_monthly_for_weekly,
         "timestamp": time.time()
     }
+
 
 def get_symbol_data(symbol):
     now = time.time()
@@ -359,6 +373,14 @@ draw_side(_s, _p, _iv, _col) =>
             array.push(labelsArr, labelRef)
 
 {''.join(blocks)}
+// ===== HVL Dual View =====
+if showHVL
+    // قصيرة المدى (4DTE)
+    hvl_short = ta.highest(array.get(array.from({to_pine_array(short_calls_iv)}), 0), 1)
+    label.new(bar_index, hvl_short, "HVL 4DTE", color=color.new(color.aqua, 0), textcolor=color.black)
+    // الأسبوعية
+    hvl_weekly = ta.highest(array.get(array.from({to_pine_array(wc_iv)}), 0), 1)
+    label.new(bar_index, hvl_weekly, "HVL Weekly", color=color.new(color.red, 50), textcolor=color.white)
 
 // ===== 240m Ask Group (fixed timeframe) =====
 h240 = request.security(syminfo.tickerid, "240", high)
@@ -456,6 +478,7 @@ if drawhl
         if not na(lowestLabel)
             label.delete(lowestLabel)
         lowestLabel := label.new(bar_index + label_location, newLow, "Lowest PL " + str.tostring(newLow), color=color.new(color.silver, 0), textcolor=color.black, style=label.style_label_up)
+
 """
 
     return Response(pine, mimetype="text/plain")
