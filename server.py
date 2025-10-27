@@ -366,7 +366,23 @@ if syminfo.ticker == "{sym}"
     # ===== بناء كود Pine الكامل =====
     pine = f"""//@version=5
 // Last Update (Riyadh): {last_update}
-indicator("GEX PRO • SmartMode + IV% + AskGroup (240m)", overlay=true, max_lines_count=500, max_labels_count=500)mode = input.string("Weekly", "Expiry Mode", options=["Weekly","Monthly"], group="Settings")
+indicator("GEX PRO", overlay=true, max_lines_count=500, max_labels_count=500)
+mode = input.string("Weekly", "Expiry Mode", options=["Weekly","Monthly"])
+mode         = "Weekly"
+showHVL      = true
+baseColor    = color.new(color.yellow, 0)
+zoneWidth    = 2.0
+
+rb             = 10
+prd            = 284
+nump           = 2
+ChannelW       = 10
+label_location = 10
+linestyle      = "Dashed"
+LineColor      = color.new(color.blue, 20)
+drawhl         = true
+showpp         = true
+
 
 draw_side(_s, _p, _iv, _col) =>
     if array.size(_s) == 0 or array.size(_p) == 0 or array.size(_iv) == 0
