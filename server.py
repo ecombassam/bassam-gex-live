@@ -368,7 +368,6 @@ if syminfo.ticker == "{sym}"
 // Last Update (Riyadh): {last_update}
 indicator("GEX PRO", overlay=true, max_lines_count=500, max_labels_count=500)
 mode = input.string("Weekly", "Expiry Mode", options=["Weekly","Monthly"])
-mode         = "Weekly"
 showHVL      = true
 baseColor    = color.new(color.yellow, 0)
 zoneWidth    = 2.0
