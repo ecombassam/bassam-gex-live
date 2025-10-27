@@ -353,11 +353,7 @@ if syminfo.ticker == "{sym}"
             // احذف القديم ثم ارسم الجديد مرة واحدة
             if not na(hvlWeeklyLabel)
                 label.delete(hvlWeeklyLabel)
-            hvlWeeklyLabel := label.new(bar_index, yW, "HVL Weekly",
-                color=color.new(color.red, 50),
-                textcolor=color.white,
-                style=label.style_label_left,
-                size=size.tiny)
+            hvlWeeklyLabel := label.new(bar_index, yW, "HVL Weekly",color=color.new(color.red, 50),textcolor=color.white,style=label.style_label_left,size=size.tiny)
 
         // — Monthly HVL —
         int   m_idx = na
@@ -371,11 +367,7 @@ if syminfo.ticker == "{sym}"
             yM = array.get(m_s, m_idx)
             if not na(hvlMonthlyLabel)
                 label.delete(hvlMonthlyLabel)
-            hvlMonthlyLabel := label.new(bar_index, yM, "HVL Monthly",
-                color=color.new(color.aqua, 0),
-                textcolor=color.black,
-                style=label.style_label_left,
-                size=size.tiny)
+            hvlMonthlyLabel := label.new(bar_index, yM, "HVL Monthly",color=color.new(color.aqua, 0),textcolor=color.black,style=label.style_label_left,size=size.tiny)
 """
         blocks.append(block)
 
