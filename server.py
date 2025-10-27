@@ -244,25 +244,20 @@ if syminfo.ticker == "{sym}"
     title = "GEX PRO • " + mode + " | {sym}"
     duplicate_expiry = {dup_str}
 
-    // -------- منطق العرض --------
     bool showWeekly = false
     bool showMonthly = false
 
     if mode == "Weekly"
         if duplicate_expiry
-            // آخر جمعة في الشهر → تجاهل الأسبوعي وأظهر الشهري فقط
             showMonthly := true
             showWeekly  := false
         else
-            // جمعة عادية → أظهر الأسبوعي فقط
             showWeekly  := true
             showMonthly := false
     else if mode == "Monthly"
-        // المستخدم اختار الشهري → أظهر الشهري فقط دائمًا
         showMonthly := true
         showWeekly  := false
 
-    // -------- GEX bars --------
     if showWeekly
         draw_side({arr_or_empty(wc_s)}, {arr_or_empty(wc_p)}, {arr_or_empty(wc_iv)}, color.lime)
         draw_side({arr_or_empty(wp_s)}, {arr_or_empty(wp_p)}, {arr_or_empty(wp_iv)}, color.red)
@@ -271,8 +266,6 @@ if syminfo.ticker == "{sym}"
         draw_side(array.from({to_pine_array(mc_s)}), array.from({to_pine_array(mc_p)}), array.from({to_pine_array(mc_iv)}), color.new(color.green, 0))
         draw_side(array.from({to_pine_array(mp_s)}), array.from({to_pine_array(mp_p)}), array.from({to_pine_array(mp_iv)}), color.new(#b02727, 0))
      
-    // -------- HVL Smart Zone --------
-    // جهّز مصفوفات الأسبوعي/الشهري
     w_iv = {arr_or_empty(wc_iv)}
     w_s  = {arr_or_empty(wc_s)}
     w_p  = {arr_or_empty(wc_p)}
@@ -280,7 +273,6 @@ if syminfo.ticker == "{sym}"
     m_s  = {arr_or_empty(mc_s)}
     m_p  = {arr_or_empty(mc_p)}
 
-    // اختر المصدر: Weekly فقط إذا مطلوب ويحتوي بيانات، وإلا Monthly
     useWeekly = showWeekly and (array.size(w_iv) > 0)
     src_iv  = useWeekly ? w_iv : m_iv
     src_str = useWeekly ? w_s  : m_s
@@ -335,12 +327,10 @@ if syminfo.ticker == "{sym}"
             h_bot := line.new(bar_index - 10, h_bot_y, bar_index + 10, h_bot_y, extend = extend.both, color = color.new(colHVL, 0), width = 1, style = line.style_dotted)
             h_lab := label.new(bar_index + 5, hvl_y, "HVL " + str.tostring(hvl_y, "#.##") + (colHVL == color.lime ? "  (🟢)" : colHVL == color.red ? "  (🔴)" : "  (🟡)") + " ±" + str.tostring(zoneWidth, "#.##") + "%", style = label.style_label_left, textcolor = color.black, color = colHVL, size = size.small)
   
-    // ===== HVL Dual View (Weekly & Monthly) =====
     var label hvlWeeklyLabel = na
     var label hvlMonthlyLabel = na
 
     if showHVL
-        // — Weekly HVL —
         int   w_idx = na
         float w_max = -1e10
         for i = 0 to array.size(w_iv) - 1
@@ -350,12 +340,10 @@ if syminfo.ticker == "{sym}"
                 w_idx := i
         if not na(w_idx) and w_idx < array.size(w_s)
             yW = array.get(w_s, w_idx)
-            // احذف القديم ثم ارسم الجديد مرة واحدة
             if not na(hvlWeeklyLabel)
                 label.delete(hvlWeeklyLabel)
             hvlWeeklyLabel := label.new(bar_index, yW, "HVL Weekly",color=color.new(color.red, 50),textcolor=color.white,style=label.style_label_left,size=size.tiny)
 
-        // — Monthly HVL —
         int   m_idx = na
         float m_max = -1e10
         for j = 0 to array.size(m_iv) - 1
@@ -380,7 +368,6 @@ if syminfo.ticker == "{sym}"
 // Last Update (Riyadh): {last_update}
 indicator("GEX PRO • SmartMode + IV% + AskGroup (240m)", overlay=true, max_lines_count=500, max_labels_count=500)mode = input.string("Weekly", "Expiry Mode", options=["Weekly","Monthly"], group="Settings")
 
-// --- draw_side: يرسم أعمدة أفقية لكل strike ---
 draw_side(_s, _p, _iv, _col) =>
     if array.size(_s) == 0 or array.size(_p) == 0 or array.size(_iv) == 0
         na
@@ -408,7 +395,6 @@ draw_side(_s, _p, _iv, _col) =>
 {''.join(blocks)}
 
 
-// ===== 240m Ask Group (fixed timeframe) =====
 h240 = request.security(syminfo.tickerid, "240", high)
 l240 = request.security(syminfo.tickerid, "240", low)
 c240 = request.security(syminfo.tickerid, "240", close)
@@ -490,7 +476,6 @@ for x = 0 to array.size(sr_levels) - 1
         col = lvl < c240 ? color.new(color.lime, 0) : color.new(color.red, 0)
         array.set(sr_lines, x, line.new(bar_index - 1, lvl, bar_index, lvl, color=col, width=1, style=style, extend=extend.both))
 
-// ===== labels for highest/lowest (from 240m series)
 var label highestLabel = na
 var label lowestLabel  = na
 if drawhl
