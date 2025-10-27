@@ -270,7 +270,7 @@ if syminfo.ticker == "{sym}"
     if showMonthly
         draw_side(array.from({to_pine_array(mc_s)}), array.from({to_pine_array(mc_p)}), array.from({to_pine_array(mc_iv)}), color.new(color.green, 0))
         draw_side(array.from({to_pine_array(mp_s)}), array.from({to_pine_array(mp_p)}), array.from({to_pine_array(mp_iv)}), color.new(#b02727, 0))
-
+     
     // -------- HVL Smart Zone --------
     // جهّز مصفوفات الأسبوعي/الشهري
     w_iv = {arr_or_empty(wc_iv)}
@@ -334,6 +334,15 @@ if syminfo.ticker == "{sym}"
             h_top := line.new(bar_index - 10, h_top_y, bar_index + 10, h_top_y, extend = extend.both, color = color.new(colHVL, 0), width = 1, style = line.style_dotted)
             h_bot := line.new(bar_index - 10, h_bot_y, bar_index + 10, h_bot_y, extend = extend.both, color = color.new(colHVL, 0), width = 1, style = line.style_dotted)
             h_lab := label.new(bar_index + 5, hvl_y, "HVL " + str.tostring(hvl_y, "#.##") + (colHVL == color.lime ? "  (🟢)" : colHVL == color.red ? "  (🔴)" : "  (🟡)") + " ±" + str.tostring(zoneWidth, "#.##") + "%", style = label.style_label_left, textcolor = color.black, color = colHVL, size = size.small)
+  
+    // ===== HVL Dual View =====
+    if showHVL
+       // قصيرة المدى (4DTE)
+       hvl_short = ta.highest(array.get(array.from({to_pine_array(short_calls_iv)}), 0), 1)
+       label.new(bar_index, hvl_short, "HVL 4DTE", color=color.new(color.aqua, 0), textcolor=color.black)
+       // الأسبوعية
+       hvl_weekly = ta.highest(array.get(array.from({to_pine_array(wc_iv)}), 0), 1)
+       label.new(bar_index, hvl_weekly, "HVL Weekly", color=color.new(color.red, 50), textcolor=color.white)
 """
         blocks.append(block)
 
@@ -373,14 +382,7 @@ draw_side(_s, _p, _iv, _col) =>
             array.push(labelsArr, labelRef)
 
 {''.join(blocks)}
-// ===== HVL Dual View =====
-if showHVL
-    // قصيرة المدى (4DTE)
-    hvl_short = ta.highest(array.get(array.from({to_pine_array(short_calls_iv)}), 0), 1)
-    label.new(bar_index, hvl_short, "HVL 4DTE", color=color.new(color.aqua, 0), textcolor=color.black)
-    // الأسبوعية
-    hvl_weekly = ta.highest(array.get(array.from({to_pine_array(wc_iv)}), 0), 1)
-    label.new(bar_index, hvl_weekly, "HVL Weekly", color=color.new(color.red, 50), textcolor=color.white)
+
 
 // ===== 240m Ask Group (fixed timeframe) =====
 h240 = request.security(syminfo.tickerid, "240", high)
