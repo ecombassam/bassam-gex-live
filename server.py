@@ -407,10 +407,7 @@ draw_side(_s, _p, _iv, _col) =>
             // 🖌️ إعداد لون النص من الإعدادات
             textCol = input.color(color.white, "Text Color", group="Display")
 
-            labelRef = label.new(
-            bar_index + bar_len + 5,
-            y,
-            str.tostring(p*100, "#.##") + "% | IV " + str.tostring(iv*100, "#.##") + "%",style=label.style_none,textcolor=textCol,size=size.small)
+            labelRef = label.new(bar_index + bar_len + 5,y,str.tostring(p*100, "#.##") + "% | IV " + str.tostring(iv*100, "#.##") + "%",style=label.style_none,textcolor=textCol,size=size.small)
 
             array.push(linesArr, lineRef)
             array.push(labelsArr, labelRef)
