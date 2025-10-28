@@ -454,7 +454,12 @@ var line  lowerLine  = na
 
 isNewWeek = ta.change(time("W"))
 
-if isReliable and showRealisticRange and isNewWeek
+var line upperLine = na
+var line lowerLine = na
+var label upperLabel = na
+var label lowerLabel = na
+
+if isReliable and showRealisticRange
     upper = close + modeRange / 2
     lower = close - modeRange / 2
 
@@ -462,11 +467,16 @@ if isReliable and showRealisticRange and isNewWeek
         line.delete(upperLine)
     if not na(lowerLine)
         line.delete(lowerLine)
+    if not na(upperLabel)
+        label.delete(upperLabel)
+    if not na(lowerLabel)
+        label.delete(lowerLabel)
 
-    upperLine := line.new(bar_index - 10, upper, bar_index + 10, upper,color=color.new(color.red, 0),style=line.style_dotted, width=1, extend=extend.both)
+    upperLine := line.new(bar_index - 10, upper, bar_index + 10, upper, color=color.new(color.red, 0),style=line.style_dotted, width=1, extend=extend.both)
     lowerLine := line.new(bar_index - 10, lower, bar_index + 10, lower,color=color.new(color.red, 0),style=line.style_dotted, width=1, extend=extend.both)
-    label.new(bar_index,upper,"📈 أعلى مدى أسبوعي\n" + str.tostring(upper, "#.##"),style = label.style_label_down,color = color.new(color.yellow, 0),textcolor = color.black,size = size.small)
-    label.new(bar_index,lower,"📉 أدنى مدى أسبوعي\n" + str.tostring(lower, "#.##"),style = label.style_label_up,color = color.new(color.yellow, 0), textcolor = color.black,size = size.small)
+    upperLabel := label.new(bar_index + 2,upper,"📈 أعلى مدى أسبوعي" + str.tostring(upper, "#.##"),style = label.style_label_down,color = color.new(color.yellow, 0),textcolor = color.black,size = size.small)
+    lowerLabel := label.new(bar_index + 2,lower,"📉 أدنى مدى أسبوعي" + str.tostring(lower, "#.##"),style = label.style_label_up,color = color.new(color.yellow, 0),textcolor = color.black,size = size.small)
+
 
 
 h240 = request.security(syminfo.tickerid, "240", high)
