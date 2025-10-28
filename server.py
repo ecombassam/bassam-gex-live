@@ -384,36 +384,49 @@ drawhl         = true
 showpp         = true
 
 
+// إعدادات النطاق ولون النص
+rangePercent = input.float(15.0, "Range % Around Price", minval=1.0, maxval=50.0, step=0.5, group="Display")
+textCol      = input.color(color.white, "Text Color", group="Display")
+
+// دالة رسم الأعمدة (مع فلترة ±range%)
 draw_side(_s, _p, _iv, _col) =>
     if array.size(_s) == 0 or array.size(_p) == 0 or array.size(_iv) == 0
         na
     else
         var line[]  linesArr  = array.new_line()
         var label[] labelsArr = array.new_label()
+
+        // حذف العناصر القديمة
         for l in linesArr
             line.delete(l)
         for lb in labelsArr
             label.delete(lb)
         array.clear(linesArr)
         array.clear(labelsArr)
+
+        upper = close * (1 + rangePercent / 100)
+        lower = close * (1 - rangePercent / 100)
+
         for i = 0 to array.size(_s) - 1
             y  = array.get(_s, i)
             p  = array.get(_p, i)
             iv = array.get(_iv, i)
 
-            // 🧭 نطاق العرض ±5%
-            upper = close * 1.15
-            lower = close * 0.85
-
-            if (y >= lower) and (y <= upper)
-            alpha   = 90 - int(p * 70)
-            bar_col = color.new(_col, alpha)
-            bar_len = int(math.max(10, p * 100))
-            lineRef  = line.new(bar_index + 3, y, bar_index + bar_len - 12, y, color=bar_col, width=6)
-            labelRef = label.new(bar_index + bar_len + 5, y,str.tostring(p*100, "#.##") + "% | IV " + str.tostring(iv*100, "#.##") + "%",style=label.style_none, textcolor=textCol, size=size.small)
-            textCol = input.color(color.white, "Text Color", group="Display")
-            array.push(linesArr, lineRef)
-            array.push(labelsArr, labelRef)
+            if y <= upper and y >= lower
+                alpha   = 90 - int(p * 70)
+                bar_col = color.new(_col, alpha)
+                bar_len = int(math.max(10, p * 100))
+                lineRef  = line.new(bar_index + 3, y, bar_index + bar_len - 12, y, color=bar_col, width=6)
+                labelRef = label.new(
+                    bar_index + bar_len + 5,
+                    y,
+                    str.tostring(p*100, "#.##") + "% | IV " + str.tostring(iv*100, "#.##") + "%",
+                    style=label.style_none,
+                    textcolor=textCol,
+                    size=size.small
+                )
+                array.push(linesArr, lineRef)
+                array.push(labelsArr, labelRef)
 
 {''.join(blocks)}
 
