@@ -384,7 +384,7 @@ drawhl         = true
 showpp         = true
 
 
-rangePercent = input.float(25.0, "Range % Around Price", minval=1.0, maxval=50.0, step=0.5, group="Display")
+rangePercent = 25.0
 textCol      = input.color(color.white, "Text Color", group="Display")
 
 draw_side(_s, _p, _iv, _col) =>
@@ -454,8 +454,6 @@ var line  lowerLine  = na
 
 isNewWeek = ta.change(time("W"))
 
-var line upperLine = na
-var line lowerLine = na
 var label upperLabel = na
 var label lowerLabel = na
 
@@ -472,8 +470,8 @@ if isReliable and showRealisticRange
     if not na(lowerLabel)
         label.delete(lowerLabel)
 
-    upperLine := line.new(bar_index - 10, upper, bar_index + 10, upper, color=color.new(color.red, 0),style=line.style_dotted, width=1, extend=extend.both)
-    lowerLine := line.new(bar_index - 10, lower, bar_index + 10, lower,color=color.new(color.red, 0),style=line.style_dotted, width=1, extend=extend.both)
+    upperLine := line.new(bar_index - 10, upper, bar_index + 10, upper, color=color.new(color.red, 0),style=line.style_dotted, width=5, extend=extend.both)
+    lowerLine := line.new(bar_index - 10, lower, bar_index + 10, lower,color=color.new(color.red, 0),style=line.style_dotted, width=5, extend=extend.both)
     upperLabel := label.new(bar_index + 2,upper,"📈 أعلى مدى أسبوعي" + str.tostring(upper, "#.##"),style = label.style_label_down,color = color.new(color.yellow, 0),textcolor = color.black,size = size.small)
     lowerLabel := label.new(bar_index + 2,lower,"📉 أدنى مدى أسبوعي" + str.tostring(lower, "#.##"),style = label.style_label_up,color = color.new(color.yellow, 0),textcolor = color.black,size = size.small)
 
