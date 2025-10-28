@@ -423,39 +423,49 @@ draw_side(_s, _p, _iv, _col) =>
 
 showRealisticRange = input.bool(true, "Show Realistic Weekly Range (6M)", group="Weekly Range")
 
-if showRealisticRange
-    weeklyHigh = request.security(syminfo.tickerid, "1W", high)
-    weeklyLow  = request.security(syminfo.tickerid, "1W", low)
-    weeklyRange = weeklyHigh - weeklyLow
+weeklyHigh = request.security(syminfo.tickerid, "1W", high)
+weeklyLow  = request.security(syminfo.tickerid, "1W", low)
+weeklyRange = weeklyHigh - weeklyLow
 
-    var float[] ranges = array.new_float()
-    if barstate.isnew
-        array.unshift(ranges, weeklyRange)
-        if array.size(ranges) > 26
-            array.pop(ranges)
+var float[] ranges = array.new_float()
+if barstate.isnew
+    array.unshift(ranges, weeklyRange)
+    if array.size(ranges) > 26
+        array.pop(ranges)
 
-    float modeRange = na
-    int maxFreq = 0
-    for i = 0 to array.size(ranges) - 1
-        base = array.get(ranges, i)
-        count = 0
-        for j = 0 to array.size(ranges) - 1
-            test = array.get(ranges, j)
-            if math.abs(base - test) <= (base * 0.05)
-                count += 1
-        if count > maxFreq
-            maxFreq := count
-            modeRange := base
+float modeRange = na
+int maxFreq = 0
+for i = 0 to array.size(ranges) - 1
+    base = array.get(ranges, i)
+    count = 0
+    for j = 0 to array.size(ranges) - 1
+        test = array.get(ranges, j)
+        if math.abs(base - test) <= (base * 0.05)
+            count += 1
+    if count > maxFreq
+        maxFreq := count
+        modeRange := base
 
-    isReliable = maxFreq >= 10
+isReliable = maxFreq >= 10
 
-    if isReliable
-        label.new(bar_index,high,"🧭 Realistic Weekly Range (6M): " + str.tostring(modeRange, "#.##") +"  (freq " + str.tostring(maxFreq) + "x)",style = label.style_label_right,color = color.new(color.yellow, 0),textcolor = color.black,size = size.small)
+var label rangeLabel = na
+var line  upperLine  = na
+var line  lowerLine  = na
 
+if isReliable and showRealisticRange
+    if na(rangeLabel) or label.get_text(rangeLabel) != str.tostring(modeRange, "#.##")
+        if not na(rangeLabel)
+            label.delete(rangeLabel)
+        if not na(upperLine)
+            line.delete(upperLine)
+        if not na(lowerLine)
+            line.delete(lowerLine)
+        rangeLabel := label.new(bar_index,high,"🧭 " + str.tostring(modeRange, "#.##") +"  (مدى " + str.tostring(maxFreq) + "x)",style = label.style_label_right,color = color.new(color.yellow, 0),textcolor = color.black,size = size.small)
         upper = close + modeRange / 2
         lower = close - modeRange / 2
-        line.new(bar_index - 10, upper, bar_index + 10, upper,color=color.new(color.lime, 0), style=line.style_dotted, width=1, extend=extend.both)
-        line.new(bar_index - 10, lower, bar_index + 10, lower,color=color.new(color.red, 0), style=line.style_dotted, width=1, extend=extend.both)
+        upperLine := line.new(bar_index - 10, upper, bar_index + 10, upper,color=color.new(color.lime, 0), style=line.style_dotted, width=5, extend=extend.both)
+        lowerLine := line.new(bar_index - 10, lower, bar_index + 10, lower,color=color.new(color.red, 0), style=line.style_dotted, width=5, extend=extend.both)
+
 
 
 h240 = request.security(syminfo.tickerid, "240", high)
