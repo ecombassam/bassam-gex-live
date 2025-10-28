@@ -322,7 +322,7 @@ if syminfo.ticker == "{sym}"
             h_box := box.new(left = bar_index - 5, top = h_top_y, right = bar_index + 5, bottom = h_bot_y, bgcolor = color.new(colHVL, 85), border_color = color.new(colHVL, 50))
             h_top := line.new(bar_index - 10, h_top_y, bar_index + 10, h_top_y, extend = extend.both, color = color.new(colHVL, 0), width = 1, style = line.style_dotted)
             h_bot := line.new(bar_index - 10, h_bot_y, bar_index + 10, h_bot_y, extend = extend.both, color = color.new(colHVL, 0), width = 1, style = line.style_dotted)
-            h_lab := label.new(bar_index + 5, hvl_y, "HVL " + str.tostring(hvl_y, "#.##") + (colHVL == color.lime ? "  (🟢)" : colHVL == color.red ? "  (🔴)" : "  (🟡)") + " ±" + str.tostring(zoneWidth, "#.##") + "%", style = label.style_label_left, textcolor = color.black, color = colHVL, size = size.small)
+            h_lab := label.new(bar_index + 5, hvl_y, " منطقة شهرية متوقعه  " + str.tostring(hvl_y, "#.##") + (colHVL == color.lime ? "  (🟢)" : colHVL == color.red ? "  (🔴)" : "  (🟡)") + " ±" + str.tostring(zoneWidth, "#.##") + "%", style = label.style_label_left, textcolor = color.black, color = colHVL, size = size.small)
   
     var label hvlWeeklyLabel = na
     var label hvlMonthlyLabel = na
@@ -339,7 +339,7 @@ if syminfo.ticker == "{sym}"
             yW = array.get(w_s, w_idx)
             if not na(hvlWeeklyLabel)
                 label.delete(hvlWeeklyLabel)
-            hvlWeeklyLabel := label.new(bar_index, yW, "HVL Weekly",color=color.new(color.red, 50),textcolor=color.white,style=label.style_label_left,size=size.tiny)
+            hvlWeeklyLabel := label.new(bar_index, yW, "  منطقة اسبوعية متوقعه ",color=color.new(color.red, 50),textcolor=color.white,style=label.style_label_left,size=size.tiny)
 
         int   m_idx = na
         float m_max = -1e10
