@@ -534,6 +534,39 @@ def all_json():
                 },
                 "timestamp": data["timestamp"]
             }
+            // ===== Weekly Max Range (6M) + Dynamic Range Lines =====
+showMaxRange = input.bool(true, "Show Max Weekly Range (6M)", group="Weekly Range")
+
+if showMaxRange
+    // بيانات الإطار الأسبوعي
+    weeklyHigh = request.security(syminfo.tickerid, "1W", high)
+    weeklyLow  = request.security(syminfo.tickerid, "1W", low)
+    weeklyRange = weeklyHigh - weeklyLow
+
+    // أقصى مدى أسبوعي خلال آخر 26 أسبوع (حوالي 6 أشهر)
+    maxRange6M = ta.highest(weeklyRange, 26)
+    rangePct = (maxRange6M / close) * 100
+
+    // النطاق المتوقع من السعر الحالي
+    upperRange = close * (1 + rangePct / 100)
+    lowerRange = close * (1 - rangePct / 100)
+
+    // ألوان تفاعلية حسب قوة الحركة
+    colMax = rangePct < 3 ? color.new(color.lime, 0) : rangePct < 6 ? color.new(color.yellow, 0) : color.new(color.red, 0)
+
+    label.new(bar_index,high,"📈 Max Weekly Range (6M): " + str.tostring(maxRange6M, "#.##") +" (" + str.tostring(rangePct, "#.##") + "%)",style = label.style_label_right,textcolor = color.white,color = colMax,size = size.small)
+
+    var line upperLine = na
+    var line lowerLine = na
+
+    if not na(upperLine)
+        line.delete(upperLine)
+    if not na(lowerLine)
+        line.delete(lowerLine)
+
+    upperLine := line.new(bar_index - 10, upperRange, bar_index + 10, upperRange,color = color.new(color.lime, 0), width = 1, extend = extend.both, style = line.style_dotted)
+    lowerLine := line.new(bar_index - 10, lowerRange, bar_index + 10, lowerRange,color = color.new(color.red, 0), width = 1, extend = extend.both, style = line.style_dotted)
+
     return jsonify({
         "status": "OK",
         "symbols": SYMBOLS,
