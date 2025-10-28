@@ -363,6 +363,17 @@ if syminfo.ticker == "{sym}"
     # ===== بناء كود Pine الكامل =====
     pine = f"""//@version=5
 // Last Update (Riyadh): {last_update}
+// 🧭 تكيّف تلقائي حسب الفريم والواجهة
+theme = input.string("Dark", "Theme", options=["Dark","Light"], group="Appearance")
+
+colCall = theme == "Dark" ? color.new(color.lime, 0) : color.new(color.green, 0)
+colPut  = theme == "Dark" ? color.new(color.red, 0)  : color.new(color.maroon, 0)
+colZone = theme == "Dark" ? color.new(color.yellow, 0) : color.new(color.orange, 0)
+
+// 🧠 التكيّف مع الفريم الزمني (auto scaling)
+offset = timeframe.multiplier <= 15 ? 1 : timeframe.multiplier <= 60 ? 2 : 4
+sizeText = timeframe.multiplier <= 15 ? size.tiny : timeframe.multiplier <= 60 ? size.small : size.normal
+
 indicator("GEX PRO", overlay=true, max_lines_count=500, max_labels_count=500)
 mode = input.string("Weekly", "Expiry Mode", options=["Weekly","Monthly"])
 showHVL      = true
