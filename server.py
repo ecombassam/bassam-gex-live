@@ -534,7 +534,7 @@ def all_json():
                 },
                 "timestamp": data["timestamp"]
             }
-            // ===== Weekly Max Range (6M) + Dynamic Range Lines =====
+// ===== Weekly Max Range (6M) + Dynamic Range Lines =====
 showMaxRange = input.bool(true, "Show Max Weekly Range (6M)", group="Weekly Range")
 
 if showMaxRange
