@@ -400,15 +400,18 @@ draw_side(_s, _p, _iv, _col) =>
             y  = array.get(_s, i)
             p  = array.get(_p, i)
             iv = array.get(_iv, i)
+
+            // 🧭 نطاق العرض ±5%
+            upper = close * 1.15
+            lower = close * 0.85
+
+            if (y >= lower) and (y <= upper)
             alpha   = 90 - int(p * 70)
             bar_col = color.new(_col, alpha)
-            bar_len = int(math.max(10, p * 50))
+            bar_len = int(math.max(10, p * 100))
             lineRef  = line.new(bar_index + 3, y, bar_index + bar_len - 12, y, color=bar_col, width=6)
-            // 🖌️ إعداد لون النص من الإعدادات
+            labelRef = label.new(bar_index + bar_len + 5, y,str.tostring(p*100, "#.##") + "% | IV " + str.tostring(iv*100, "#.##") + "%",style=label.style_none, textcolor=textCol, size=size.small)
             textCol = input.color(color.white, "Text Color", group="Display")
-
-            labelRef = label.new(bar_index + bar_len + 5,y,str.tostring(p*100, "#.##") + "% | IV " + str.tostring(iv*100, "#.##") + "%",style=label.style_none,textcolor=textCol,size=size.small)
-
             array.push(linesArr, lineRef)
             array.push(labelsArr, labelRef)
 
