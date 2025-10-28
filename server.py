@@ -181,7 +181,7 @@ def update_symbol_data(symbol):
     else:
         _, w_calls, w_puts = analyze_oi_iv(rows, exp_w, 3) if exp_w else (None, [], [])
 
-    _, m_calls, m_puts = analyze_oi_iv(rows, exp_m, 6)
+    _, m_calls, m_puts = analyze_oi_iv(rows, exp_m, 4)
     # 🔹 HVL قصيرة المدى (4DTE فقط)
     exp_short = None
     today = dt.date.today()
@@ -384,11 +384,9 @@ drawhl         = true
 showpp         = true
 
 
-// إعدادات النطاق ولون النص
-rangePercent = input.float(15.0, "Range % Around Price", minval=1.0, maxval=50.0, step=0.5, group="Display")
+rangePercent = input.float(25.0, "Range % Around Price", minval=1.0, maxval=50.0, step=0.5, group="Display")
 textCol      = input.color(color.white, "Text Color", group="Display")
 
-// دالة رسم الأعمدة (مع فلترة ±range%)
 draw_side(_s, _p, _iv, _col) =>
     if array.size(_s) == 0 or array.size(_p) == 0 or array.size(_iv) == 0
         na
@@ -396,7 +394,6 @@ draw_side(_s, _p, _iv, _col) =>
         var line[]  linesArr  = array.new_line()
         var label[] labelsArr = array.new_label()
 
-        // حذف العناصر القديمة
         for l in linesArr
             line.delete(l)
         for lb in labelsArr
