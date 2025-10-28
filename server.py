@@ -450,16 +450,7 @@ if showRealisticRange
     isReliable = maxFreq >= 10
 
     if isReliable
-        label.new(
-            bar_index,
-            high,
-            "🧭 Realistic Weekly Range (6M): " + str.tostring(modeRange, "#.##") +
-            "  (freq " + str.tostring(maxFreq) + "x)",
-            style = label.style_label_right,
-            color = color.new(color.yellow, 0),
-            textcolor = color.black,
-            size = size.small
-        )
+        label.new(bar_index,high,"🧭 Realistic Weekly Range (6M): " + str.tostring(modeRange, "#.##") +"  (freq " + str.tostring(maxFreq) + "x)",style = label.style_label_right,color = color.new(color.yellow, 0),textcolor = color.black,size = size.small)
 
         upper = close + modeRange / 2
         lower = close - modeRange / 2
