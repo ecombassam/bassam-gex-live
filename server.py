@@ -366,114 +366,126 @@ if syminfo.ticker == "{sym}"
 offset = timeframe.multiplier <= 15 ? 1 : timeframe.multiplier <= 60 ? 2 : 4
 sizeText = timeframe.multiplier <= 15 ? size.tiny : timeframe.multiplier <= 60 ? size.small : size.normal
 
-indicator("GEX PRO", overlay=true, max_lines_count=500, max_labels_count=500, dynamic_requests=true)
+indicator("GEX PRO • SmartMode + IV% + AskGroup (240m)", overlay=true, max_lines_count=500, max_labels_count=500)
+
 mode = input.string("Weekly", "Expiry Mode", options=["Weekly","Monthly"])
-showHVL      = true
-baseColor    = color.new(color.yellow, 0)
-zoneWidth    = 2.0
+showHVL   = true
+baseColor = color.new(color.yellow, 0)
+zoneWidth = 2.0
 
-rb             = 10
-prd            = 284
-nump           = 2
-ChannelW       = 10
-label_location = 10
-linestyle      = "Dashed"
-LineColor      = color.new(color.blue, 20)
-drawhl         = true
-showpp         = true
+//--------------------------------------------------------------
+// 🧭 
+//--------------------------------------------------------------
+wHigh = request.security(syminfo.tickerid, "W", high, barmerge.gaps_off, barmerge.lookahead_off)
+wLow  = request.security(syminfo.tickerid, "W", low,  barmerge.gaps_off, barmerge.lookahead_off)
 
+var float[] wkRanges = array.new_float()
+if barstate.isfirst
+    for i = 0 to 25
+        array.push(wkRanges, math.max(0.0, wHigh[i] - wLow[i]))
 
-rangePercent = 25.0
-textCol      = input.color(color.white, "Text Color", group="Display")
+bucketSize = math.max(syminfo.mintick * 10.0, close * 0.002)
+roundToBucket(v) =>
+    bucketSize == 0.0 ? v : math.round(v / bucketSize) * bucketSize
 
+var float[] uniq = array.new_float()
+var int[]   freq = array.new_int()
+array.clear(uniq), array.clear(freq)
+for i = 0 to array.size(wkRanges) - 1
+    v  = roundToBucket(array.get(wkRanges, i))
+    int pos = na
+    for j = 0 to array.size(uniq) - 1
+        if array.get(uniq, j) == v
+            pos := j
+            break
+    if na(pos)
+        array.push(uniq, v)
+        array.push(freq, 1)
+    else
+        array.set(freq, pos, array.get(freq, pos) + 1)
+
+modeVal    = 0.0
+modeCount  = 0
+for j = 0 to array.size(uniq) - 1
+    if array.get(freq, j) > modeCount
+        modeCount := array.get(freq, j)
+        modeVal   := array.get(uniq, j)
+
+// حساب أطول سلسلة متتابعة
+longestStreak = 0
+curr = 0
+for i = 0 to array.size(wkRanges) - 1
+    vb = roundToBucket(array.get(wkRanges, i))
+    if vb == modeVal
+        curr += 1
+        if curr > longestStreak
+            longestStreak := curr
+    else
+        curr := 0
+
+// استخدم modeVal إذا (≥10 متتابعة أو ≥20 إجمالي) وإلا استخدم المدى الأقصى
+maxRange = 0.0
+for i = 0 to array.size(wkRanges) - 1
+    r = array.get(wkRanges, i)
+    if r > maxRange
+        maxRange := r
+
+effWeeklyRange = (longestStreak >= 10 or modeCount >= 20) ? modeVal : maxRange
+weeklyUpper = close + effWeeklyRange
+weeklyLower = close - effWeeklyRange
+
+// رسم الخطوط والليبلات
+var line topLine = na
+var line botLine = na
+var label topLbl = na
+var label botLbl = na
+
+if barstate.islast
+    if not na(topLine)
+        line.set_xy1(topLine, bar_index - 5, weeklyUpper)
+        line.set_xy2(topLine, bar_index + 5, weeklyUpper)
+        line.set_xy1(botLine, bar_index - 5, weeklyLower)
+        line.set_xy2(botLine, bar_index + 5, weeklyLower)
+        label.set_xy(topLbl, bar_index + 6, weeklyUpper)
+        label.set_text(topLbl, "📈 أعلى مدى أسبوعي " + str.tostring(weeklyUpper, "#.##"))
+        label.set_xy(botLbl, bar_index + 6, weeklyLower)
+        label.set_text(botLbl, "📉 أدنى مدى أسبوعي " + str.tostring(weeklyLower, "#.##"))
+    else
+        topLine := line.new(bar_index - 5, weeklyUpper, bar_index + 5, weeklyUpper, extend=extend.both, color=color.new(color.red, 0), style=line.style_dotted)
+        botLine := line.new(bar_index - 5, weeklyLower, bar_index + 5, weeklyLower, extend=extend.both, color=color.new(color.red, 0), style=line.style_dotted)
+        topLbl := label.new(bar_index + 6, weeklyUpper, "📈 أعلى مدى أسبوعي " + str.tostring(weeklyUpper, "#.##"), style=label.style_label_left, textcolor=color.black, color=color.new(color.yellow, 0), size=size.tiny)
+        botLbl := label.new(bar_index + 6, weeklyLower, "📉 أدنى مدى أسبوعي " + str.tostring(weeklyLower, "#.##"), style=label.style_label_left, textcolor=color.black, color=color.new(color.yellow, 0), size=size.tiny)
+
+//--------------------------------------------------------------
+// GEX Logic 
+//--------------------------------------------------------------
 draw_side(_s, _p, _iv, _col) =>
     if array.size(_s) == 0 or array.size(_p) == 0 or array.size(_iv) == 0
         na
     else
         var line[]  linesArr  = array.new_line()
         var label[] labelsArr = array.new_label()
-
         for l in linesArr
             line.delete(l)
         for lb in labelsArr
             label.delete(lb)
         array.clear(linesArr)
         array.clear(labelsArr)
-
-        upper = close * (1 + rangePercent / 100)
-        lower = close * (1 - rangePercent / 100)
-
         for i = 0 to array.size(_s) - 1
             y  = array.get(_s, i)
             p  = array.get(_p, i)
             iv = array.get(_iv, i)
-
-            if y <= upper and y >= lower
+            if y >= weeklyUpper or y <= weeklyLower
                 alpha   = 90 - int(p * 70)
                 bar_col = color.new(_col, alpha)
                 bar_len = int(math.max(10, p * 100))
                 lineRef  = line.new(bar_index + 3, y, bar_index + bar_len - 12, y, color=bar_col, width=6)
-                labelRef = label.new(bar_index + bar_len + 5,y,str.tostring(p*100, "#.##") + "% | IV " + str.tostring(iv*100, "#.##") + "%",style=label.style_none,textcolor=textCol,size=size.small)
+                labelRef = label.new(bar_index + bar_len + 2, y, str.tostring(p*100, "#.##") + "% | IV " + str.tostring(iv*100, "#.##") + "%", style=label.style_none, textcolor=color.white, size=size.small)
                 array.push(linesArr, lineRef)
                 array.push(labelsArr, labelRef)
 
                        
 {''.join(blocks)}
-
-showRealisticRange = input.bool(true, "Show Realistic Weekly Range (6M)", group="Weekly Range")
-
-weeklyHigh = request.security(syminfo.tickerid, "1W", high)
-weeklyLow  = request.security(syminfo.tickerid, "1W", low)
-weeklyRange = weeklyHigh - weeklyLow
-
-var float[] ranges = array.new_float()
-if barstate.isnew
-    array.unshift(ranges, weeklyRange)
-    if array.size(ranges) > 26
-        array.pop(ranges)
-
-float modeRange = na
-int maxFreq = 0
-for i = 0 to array.size(ranges) - 1
-    base = array.get(ranges, i)
-    count = 0
-    for j = 0 to array.size(ranges) - 1
-        test = array.get(ranges, j)
-        if math.abs(base - test) <= (base * 0.05)
-            count += 1
-    if count > maxFreq
-        maxFreq := count
-        modeRange := base
-
-isReliable = maxFreq >= 10
-
-var label rangeLabel = na
-var line  upperLine  = na
-var line  lowerLine  = na
-
-isNewWeek = ta.change(time("W"))
-
-var label upperLabel = na
-var label lowerLabel = na
-
-if isReliable and showRealisticRange
-    upper = close + modeRange / 2
-    lower = close - modeRange / 2
-
-    if not na(upperLine)
-        line.delete(upperLine)
-    if not na(lowerLine)
-        line.delete(lowerLine)
-    if not na(upperLabel)
-        label.delete(upperLabel)
-    if not na(lowerLabel)
-        label.delete(lowerLabel)
-
-    upperLine := line.new(bar_index - 10, upper, bar_index + 10, upper, color=color.new(color.red, 0),style=line.style_dotted, width=5, extend=extend.both)
-    lowerLine := line.new(bar_index - 10, lower, bar_index + 10, lower,color=color.new(color.red, 0),style=line.style_dotted, width=5, extend=extend.both)
-    upperLabel := label.new(bar_index + 2,upper,"📈 أعلى مدى أسبوعي" + str.tostring(upper, "#.##"),style = label.style_label_down,color = color.new(color.yellow, 0),textcolor = color.black,size = size.small)
-    lowerLabel := label.new(bar_index + 2,lower,"📉 أدنى مدى أسبوعي" + str.tostring(lower, "#.##"),style = label.style_label_up,color = color.new(color.yellow, 0),textcolor = color.black,size = size.small)
-
 
 
 h240 = request.security(syminfo.tickerid, "240", high)
