@@ -533,26 +533,6 @@ if not na(ph) or not na(pl)
                     if not na(pl[x]) and countpp < 21
                         array.set(sr_levels, countpp, l240[x + rb])
 
-style = linestyle == "Solid" ? line.style_solid : linestyle == "Dotted" ? line.style_dotted : line.style_dashed
-for x = 0 to array.size(sr_levels) - 1
-    lvl = array.get(sr_levels, x)
-    if not na(lvl)
-        col = lvl < c240 ? color.new(color.lime, 0) : color.new(color.red, 0)
-        array.set(sr_lines, x, line.new(bar_index - 1, lvl, bar_index, lvl, color=col, width=1, style=style, extend=extend.both))
-
-var label highestLabel = na
-var label lowestLabel  = na
-if drawhl
-    newHigh = ta.highest(h240, prd)
-    newLow  = ta.lowest(l240,  prd)
-    if na(highestLabel) or label.get_y(highestLabel) != newHigh
-        if not na(highestLabel)
-            label.delete(highestLabel)
-        highestLabel := label.new(bar_index + label_location, newHigh, "Highest PH " + str.tostring(newHigh), color=color.new(color.silver, 0), textcolor=color.black, style=label.style_label_down)
-    if na(lowestLabel) or label.get_y(lowestLabel) != newLow
-        if not na(lowestLabel)
-            label.delete(lowestLabel)
-        lowestLabel := label.new(bar_index + label_location, newLow, "Lowest PL " + str.tostring(newLow), color=color.new(color.silver, 0), textcolor=color.black, style=label.style_label_up)
 
 """
 
