@@ -367,7 +367,7 @@ if syminfo.ticker == "{sym}"
 offset = timeframe.multiplier <= 15 ? 1 : timeframe.multiplier <= 60 ? 2 : 4
 sizeText = timeframe.multiplier <= 15 ? size.tiny : timeframe.multiplier <= 60 ? size.small : size.normal
 
-indicator("GEX PRO", overlay=true, max_lines_count=500, max_labels_count=500)
+indicator("GEX PRO", overlay=true, max_lines_count=500, max_labels_count=500, dynamic_requests=true)
 mode = input.string("Weekly", "Expiry Mode", options=["Weekly","Monthly"])
 showHVL      = true
 baseColor    = color.new(color.yellow, 0)
