@@ -319,7 +319,6 @@ if syminfo.ticker == "{sym}"
             h_top_y = hvl_y * (1 + zoneWidth / 100)
             h_bot_y = hvl_y * (1 - zoneWidth / 100)
 
-            h_box := box.new(left = bar_index - 5, top = h_top_y, right = bar_index + 5, bottom = h_bot_y, bgcolor = color.new(colHVL, 85), border_color = color.new(colHVL, 50))
             h_top := line.new(bar_index - 10, h_top_y, bar_index + 10, h_top_y, extend = extend.both, color = color.new(colHVL, 0), width = 1, style = line.style_dotted)
             h_bot := line.new(bar_index - 10, h_bot_y, bar_index + 10, h_bot_y, extend = extend.both, color = color.new(colHVL, 0), width = 1, style = line.style_dotted)
             h_lab := label.new(bar_index - 5, hvl_y, " منطقة شهرية متوقعه  " + str.tostring(hvl_y, "#.##") + (colHVL == color.lime ? "  (🟢)" : colHVL == color.red ? "  (🔴)" : "  (🟡)") + " ±" + str.tostring(zoneWidth, "#.##") + "%", style = label.style_label_right, textcolor = color.black, color = colHVL, size = size.small)
