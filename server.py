@@ -363,13 +363,6 @@ if syminfo.ticker == "{sym}"
     # ===== بناء كود Pine الكامل =====
     pine = f"""//@version=5
 // Last Update (Riyadh): {last_update}
-// 🧭 تكيّف تلقائي حسب الفريم والواجهة
-theme = input.string("Dark", "Theme", options=["Dark","Light"], group="Appearance")
-
-colCall = theme == "Dark" ? color.new(color.lime, 0) : color.new(color.green, 0)
-colPut  = theme == "Dark" ? color.new(color.red, 0)  : color.new(color.maroon, 0)
-colZone = theme == "Dark" ? color.new(color.yellow, 0) : color.new(color.orange, 0)
-
 // 🧠 التكيّف مع الفريم الزمني (auto scaling)
 offset = timeframe.multiplier <= 15 ? 1 : timeframe.multiplier <= 60 ? 2 : 4
 sizeText = timeframe.multiplier <= 15 ? size.tiny : timeframe.multiplier <= 60 ? size.small : size.normal
@@ -411,7 +404,14 @@ draw_side(_s, _p, _iv, _col) =>
             bar_col = color.new(_col, alpha)
             bar_len = int(math.max(10, p * 50))
             lineRef  = line.new(bar_index + 3, y, bar_index + bar_len - 12, y, color=bar_col, width=6)
-            labelRef = label.new(bar_index + bar_len + 5, y, str.tostring(p*100, "#.##") + "% | IV " + str.tostring(iv*100, "#.##") + "%", style=label.style_none, textcolor=color.white, size=size.small)
+            // 🖌️ إعداد لون النص من الإعدادات
+            textCol = input.color(color.white, "Text Color", group="Display")
+
+            labelRef = label.new(
+            bar_index + bar_len + 5,
+            y,
+            str.tostring(p*100, "#.##") + "% | IV " + str.tostring(iv*100, "#.##") + "%",style=label.style_none,textcolor=textCol,size=size.small)
+
             array.push(linesArr, lineRef)
             array.push(labelsArr, labelRef)
 
