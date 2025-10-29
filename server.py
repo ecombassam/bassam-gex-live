@@ -313,16 +313,23 @@ if syminfo.ticker == "{sym}"
     var label emTopL = na
     var label emBotL = na
 
-    if not na(em_value)
-        up = wkOpen + em_value
-        dn = wkOpen - em_value
-        if not na(emTop)
-            line.delete(emTop), line.delete(emBot)
-            label.delete(emTopL), label.delete(emBotL)
-        emTop  := line.new(bar_index-5, up, bar_index+5, up, extend=extend.both, color=color.new(color.yellow, 0), width=2, style=line.style_dotted)
-        emBot  := line.new(bar_index-5, dn, bar_index+5, dn, extend=extend.both, color=color.new(color.yellow, 0), width=2, style=line.style_dotted)
-        emTopL := label.new(bar_index, up, "📈 أعلى مدى متوقع: " + str.tostring(up, "#.##"), style=label.style_label_down, color=color.new(color.yellow, 0), textcolor=color.black, size=size.small)
-        emBotL := label.new(bar_index, dn, "📉 أدنى مدى متوقع: " + str.tostring(dn, "#.##"), style=label.style_label_up,   color=color.new(color.yellow, 0), textcolor=color.black, size=size.small)
+    if barstate.islast and not na(em_value)
+    up = wkOpen + em_value
+    dn = wkOpen - em_value
+
+    // حذف القديم إن وجد
+    if not na(emTop)
+        line.delete(emTop)
+        line.delete(emBot)
+        label.delete(emTopL)
+        label.delete(emBotL)
+
+    // رسم جديد لمرة واحدة فقط في آخر شمعة
+    emTop  := line.new(bar_index - 5, up, bar_index + 5, up, extend = extend.both, color = color.new(color.yellow, 0), width = 2, style = line.style_dotted)
+    emBot  := line.new(bar_index - 5, dn, bar_index + 5, dn, extend = extend.both, color = color.new(color.yellow, 0), width = 2, style = line.style_dotted)
+    emTopL := label.new(bar_index, up, "📈 أعلى مدى متوقع: " + str.tostring(up, "#.##"), style = label.style_label_down, color = color.new(color.yellow, 0), textcolor = color.black, size = size.small)
+    emBotL := label.new(bar_index, dn, "📉 أدنى مدى متوقع: " + str.tostring(dn, "#.##"), style = label.style_label_up, color = color.new(color.yellow, 0), textcolor = color.black, size = size.small)
+
 """
         blocks.append(block)
 
