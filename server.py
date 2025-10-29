@@ -306,7 +306,7 @@ if syminfo.ticker == "{sym}"
         draw_side(array.from({to_pine_array(mp_s)}), array.from({to_pine_array(mp_p)}), array.from({to_pine_array(mp_iv)}), color.new(#b02727, 0))
 
     // --- Weekly open as center ----
-    wkOpen = request.security(syminfo.tickerid, "W", open)
+    wkOpen = request.security(syminfo.tickerid, timeframe.period, close)
 
     var line emTop = na
     var line emBot = na
