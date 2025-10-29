@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: bassam-gex-live
+    env: python
+    plan: starter
+    region: frankfurt
+    buildCommand: ""
+    startCommand: python server.py
+    autoDeploy: true
+    healthCheckPath: /
+    disk:
+      name: data
+      mountPath: /data
+      sizeGB: 0.5
+    envVars:
+      - key: POLYGON_API_KEY
+        sync: false
