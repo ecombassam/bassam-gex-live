@@ -362,102 +362,69 @@ if syminfo.ticker == "{sym}"
     # ===== بناء كود Pine الكامل =====
     pine = f"""//@version=5
 // Last Update (Riyadh): {last_update}
-// 🧠 التكيّف مع الفريم الزمني (auto scaling)
-offset = timeframe.multiplier <= 15 ? 1 : timeframe.multiplier <= 60 ? 2 : 4
-sizeText = timeframe.multiplier <= 15 ? size.tiny : timeframe.multiplier <= 60 ? size.small : size.normal
+indicator("GEX PRO", overlay=true, max_lines_count=500, max_labels_count=500, dynamic_requests=true)
 
-indicator("GEX PRO • SmartMode + IV% + AskGroup (240m)", overlay=true, max_lines_count=500, max_labels_count=500)
-
+//--------------------------------------------------------------
+// ⚙️ إعدادات العرض
+//--------------------------------------------------------------
 mode = input.string("Weekly", "Expiry Mode", options=["Weekly","Monthly"])
 showHVL   = true
 baseColor = color.new(color.yellow, 0)
 zoneWidth = 2.0
 
-//--------------------------------------------------------------
-// 🧭 
-//--------------------------------------------------------------
-wHigh = request.security(syminfo.tickerid, "W", high, barmerge.gaps_off, barmerge.lookahead_off)
-wLow  = request.security(syminfo.tickerid, "W", low,  barmerge.gaps_off, barmerge.lookahead_off)
+
+wkHigh = request.security(syminfo.tickerid, "W", high)
+wkLow  = request.security(syminfo.tickerid, "W", low)
+wkRange = wkHigh - wkLow
 
 var float[] wkRanges = array.new_float()
 if barstate.isfirst
     for i = 0 to 25
-        array.push(wkRanges, math.max(0.0, wHigh[i] - wLow[i]))
+        array.push(wkRanges, wkHigh[i] - wkLow[i])
 
-bucketSize = math.max(syminfo.mintick * 10.0, close * 0.002)
-roundToBucket(v) =>
-    bucketSize == 0.0 ? v : math.round(v / bucketSize) * bucketSize
+if ta.change(time("W"))
+    array.unshift(wkRanges, wkRange)
+    if array.size(wkRanges) > 26
+        array.pop(wkRanges)
 
-var float[] uniq = array.new_float()
-var int[]   freq = array.new_int()
-array.clear(uniq), array.clear(freq)
-for i = 0 to array.size(wkRanges) - 1
-    v  = roundToBucket(array.get(wkRanges, i))
-    int pos = na
-    if array.size(uniq) > 0
-        for j = 0 to array.size(uniq) - 1
-            if array.get(uniq, j) == v
-                pos := j
-                break
-    if na(pos)
-        array.push(uniq, v)
-        array.push(freq, 1)
-    else
-        array.set(freq, pos, array.get(freq, pos) + 1)
+sum = 0.0
+for i = 0 to array.size(wkRanges)-1
+    sum += array.get(wkRanges, i)
+avg = sum / array.size(wkRanges)
 
-modeVal    = 0.0
-modeCount  = 0
-for j = 0 to array.size(uniq) - 1
-    if array.get(freq, j) > modeCount
-        modeCount := array.get(freq, j)
-        modeVal   := array.get(uniq, j)
+var float variance = 0.0
+for i = 0 to array.size(wkRanges)-1
+    variance += math.pow(array.get(wkRanges, i) - avg, 2)
+stdev = math.sqrt(variance / array.size(wkRanges))
 
-longestStreak = 0
-curr = 0
-for i = 0 to array.size(wkRanges) - 1
-    vb = roundToBucket(array.get(wkRanges, i))
-    if vb == modeVal
-        curr += 1
-        if curr > longestStreak
-            longestStreak := curr
-    else
-        curr := 0
-
-maxRange = 0.0
-for i = 0 to array.size(wkRanges) - 1
-    r = array.get(wkRanges, i)
-    if r > maxRange
-        maxRange := r
-
-effWeeklyRange = (longestStreak >= 10 or modeCount >= 20) ? modeVal : maxRange
-weeklyUpper = close + effWeeklyRange
-weeklyLower = close - effWeeklyRange
-
-var line topLine = na
-var line botLine = na
-var label topLbl = na
-var label botLbl = na
-
-if not na(weeklyUpper) and not na(weeklyLower)
-    if na(topLine)
-        topLine := line.new(bar_index - 5, weeklyUpper, bar_index + 5, weeklyUpper, extend=extend.both, color=color.new(color.red, 0), style=line.style_dotted)
-        botLine := line.new(bar_index - 5, weeklyLower, bar_index + 5, weeklyLower, extend=extend.both, color=color.new(color.red, 0), style=line.style_dotted)
-        topLbl  := label.new(bar_index + 6, weeklyUpper, "📈 أعلى مدى أسبوعي " + str.tostring(weeklyUpper, "#.##"), yloc=yloc.abovebar, style=label.style_label_left, textcolor=color.black, color=color.new(color.yellow, 0), size=size.small)
-        botLbl  := label.new(bar_index + 6, weeklyLower, "📉 أدنى مدى أسبوعي " + str.tostring(weeklyLower, "#.##"), yloc=yloc.belowbar, style=label.style_label_left, textcolor=color.black, color=color.new(color.yellow, 0), size=size.small)
-    else
-        line.set_xy1(topLine, bar_index - 5, weeklyUpper)
-        line.set_xy2(topLine, bar_index + 5, weeklyUpper)
-        line.set_xy1(botLine, bar_index - 5, weeklyLower)
-        line.set_xy2(botLine, bar_index + 5, weeklyLower)
-        label.set_xy(topLbl, bar_index + 6, weeklyUpper)
-        label.set_text(topLbl, "📈 أعلى مدى أسبوعي " + str.tostring(weeklyUpper, "#.##"))
-        label.set_xy(botLbl, bar_index + 6, weeklyLower)
-        label.set_text(botLbl, "📉 أدنى مدى أسبوعي " + str.tostring(weeklyLower, "#.##"))
+expectedRange = avg + stdev  
 
 
-//--------------------------------------------------------------
-// GEX Logic 
-//--------------------------------------------------------------
+var float weeklyOpen = na
+if ta.change(time("W"))
+    weeklyOpen := open
+
+
+upperRange = weeklyOpen + expectedRange / 2
+lowerRange = weeklyOpen - expectedRange / 2
+
+var line upperLine = na
+var line lowerLine = na
+var label upperLabel = na
+var label lowerLabel = na
+
+if barstate.islast
+    if not na(upperLine)
+        line.delete(upperLine)
+        line.delete(lowerLine)
+        label.delete(upperLabel)
+        label.delete(lowerLabel)
+    upperLine := line.new(bar_index - 5, upperRange, bar_index + 5, upperRange, extend=extend.both, color=color.new(color.yellow, 0), width=2, style=line.style_dotted)
+    lowerLine := line.new(bar_index - 5, lowerRange, bar_index + 5, lowerRange, extend=extend.both, color=color.new(color.yellow, 0), width=2, style=line.style_dotted)
+    upperLabel := label.new(bar_index, upperRange, "📈 أعلى مدى متوقع: " + str.tostring(upperRange, "#.##"), style=label.style_label_down, color=color.new(color.yellow, 0), textcolor=color.black, size=size.small)
+    lowerLabel := label.new(bar_index, lowerRange, "📉 أدنى مدى متوقع: " + str.tostring(lowerRange, "#.##"), style=label.style_label_up, color=color.new(color.yellow, 0), textcolor=color.black, size=size.small)
+
+
 draw_side(_s, _p, _iv, _col) =>
     if array.size(_s) == 0 or array.size(_p) == 0 or array.size(_iv) == 0
         na
@@ -474,7 +441,7 @@ draw_side(_s, _p, _iv, _col) =>
             y  = array.get(_s, i)
             p  = array.get(_p, i)
             iv = array.get(_iv, i)
-            if y >= weeklyUpper or y <= weeklyLower
+            if y >= upperRange or y <= lowerRange
                 alpha   = 90 - int(p * 70)
                 bar_col = color.new(_col, alpha)
                 bar_len = int(math.max(10, p * 100))
@@ -483,74 +450,7 @@ draw_side(_s, _p, _iv, _col) =>
                 array.push(linesArr, lineRef)
                 array.push(labelsArr, labelRef)
 
-                       
 {''.join(blocks)}
-
-
-h240 = request.security(syminfo.tickerid, "240", high)
-l240 = request.security(syminfo.tickerid, "240", low)
-c240 = request.security(syminfo.tickerid, "240", close)
-
-
-ph = ta.pivothigh(h240, rb, rb)
-pl = ta.pivotlow(l240,  rb, rb)
-
-plotshape(showpp and not na(ph), title="PH", text="انعكاس", style=shape.labeldown, color=color.new(color.white,100), textcolor=color.red,  location=location.abovebar, offset=-rb)
-plotshape(showpp and not na(pl), title="PL", text="انعكاس", style=shape.labelup,   color=color.new(color.white,100), textcolor=color.lime, location=location.belowbar, offset=-rb)
-
-sr_levels  = array.new_float(21, na)
-prdhighest = ta.highest(h240, prd)
-prdlowest  = ta.lowest(l240,  prd)
-cwidth     = (prdhighest - prdlowest) * ChannelW / 100
-aas        = array.new_bool(41, true)
-var sr_lines = array.new_line(21, na)
-
-if not na(ph) or not na(pl)
-    for x = 0 to array.size(sr_lines) - 1
-        if not na(array.get(sr_lines, x))
-            line.delete(array.get(sr_lines, x))
-        array.set(sr_lines, x, na)
-
-    highestph = prdlowest
-    lowestpl  = prdhighest
-    countpp = 0
-
-    for x = 0 to prd
-        if na(c240[x]) or countpp > 40
-            break
-        if not na(ph[x]) or not na(pl[x])
-            highestph := math.max(highestph, nz(ph[x], prdlowest), nz(pl[x], prdlowest))
-            lowestpl  := math.min(lowestpl,  nz(ph[x], prdhighest), nz(pl[x], prdhighest))
-            countpp += 1
-            if array.get(aas, countpp)
-                upl = (not na(ph[x]) ? h240[x + rb] : l240[x + rb]) + cwidth
-                dnl = (not na(ph[x]) ? h240[x + rb] : l240[x + rb]) - cwidth
-                tmp = array.new_bool(41, true)
-                cnt = 0
-                tpoint = 0
-                for xx = 0 to prd
-                    if na(c240[xx]) or cnt > 40
-                        break
-                    if not na(ph[xx]) or not na(pl[xx])
-                        chg = false
-                        cnt += 1
-                        if array.get(aas, cnt)
-                            if not na(ph[xx]) and h240[xx + rb] <= upl and h240[xx + rb] >= dnl
-                                tpoint += 1
-                                chg := true
-                            if not na(pl[xx]) and l240[xx + rb] <= upl and l240[xx + rb] >= dnl
-                                tpoint += 1
-                                chg := true
-                        if chg and cnt < 41
-                            array.set(tmp, cnt, false)
-                if tpoint >= nump
-                    for g = 0 to 40
-                        if not array.get(tmp, g)
-                            array.set(aas, g, false)
-                    if not na(ph[x]) and countpp < 21
-                        array.set(sr_levels, countpp, h240[x + rb])
-                    if not na(pl[x]) and countpp < 21
-                        array.set(sr_levels, countpp, l240[x + rb])
 
 
 """
