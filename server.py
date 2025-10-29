@@ -1,6 +1,9 @@
 # ============================================================
-# Bassam GEX PRO v4.7 – Weekly EM Lines
-# Adds IV-based Expected Move lines (weekly) for all symbols
+# Bassam GEX PRO v4.9 – Adaptive Colors + No-Dup + Live Center (1h)
+# - Weekly EM lines centered at current price (1h)
+# - No duplication of lines/labels
+# - Option bars managed per-symbol (cleared each refresh)
+# - Colors readable on both dark/light chart backgrounds
 # ============================================================
 
 import os, json, datetime as dt, requests, time, math
@@ -19,6 +22,7 @@ SYMBOLS = [
 CACHE = {}
 CACHE_EXPIRY = 3600  # 1h
 
+# ---------------------- Common helpers ----------------------
 def _err(msg, http=502, data=None, sym=None):
     body = {"error": msg}
     if data is not None: body["data"] = data
@@ -36,7 +40,7 @@ def _get(url, params=None):
     except Exception:
         return r.status_code, {"error": "Invalid JSON"}
 
-# ---------------------- Polygon Fetch -----------------------
+# ---------------------- Polygon fetch -----------------------
 def fetch_all(symbol):
     url = f"{BASE_SNAP}/{symbol.upper()}"
     cursor, all_rows = None, []
@@ -86,7 +90,7 @@ def nearest_monthly(expiries):
             last_friday = d
     return last_friday or (month_list[-1] if month_list else expiries[-1])
 
-# -------------------- OI + IV Analysis ---------------------
+# -------------------- OI + IV analysis ---------------------
 def analyze_oi_iv(rows, expiry, per_side_limit, split_by_price=True):
     rows = [r for r in rows if r.get("details", {}).get("expiration_date") == expiry]
     if not rows: return None, [], []
@@ -118,6 +122,7 @@ def analyze_oi_iv(rows, expiry, per_side_limit, split_by_price=True):
     top_puts  = sorted(puts,  key=lambda x: x[1], reverse=True)[:per_side_limit]
     return price, top_calls, top_puts
 
+# -------------------- Pine normalization -------------------
 def normalize_for_pine(data):
     if not data: return [], [], []
     base = max(oi for _, oi, _ in data) or 1.0
@@ -134,105 +139,68 @@ def arr_or_empty(arr):
     return f"array.from({txt})" if txt else "array.new_float()"
 
 # -------------------- Expected Move (EM) -------------------
-# >>> EM: استخرج IV السنوي عند الـ ATM (متوسط كول/بوت الأقرب للسعر) ثم احسب
-# EM = Price * IV * sqrt(days/365)
+# EM = Price * IV_annual * sqrt(days/365)
 def compute_weekly_em(rows, weekly_expiry):
-    if not weekly_expiry: 
+    if not weekly_expiry:
         return None, None, None
-    # السعر الحالي من أي صف
     price = None
     for r in rows:
         p = r.get("underlying_asset", {}).get("price")
         if isinstance(p, (int, float)) and p > 0:
-            price = float(p)
-            break
+            price = float(p); break
     if price is None:
         return None, None, None
 
-    # صفوف الأسبوع المحدد
     wk_rows = [r for r in rows if r.get("details", {}).get("expiration_date") == weekly_expiry]
-    if not wk_rows:
-        return price, None, None
+    if not wk_rows: return price, None, None
 
-    # اختر الكول/البوت الأقرب للـ ATM
     calls = [r for r in wk_rows if r.get("details", {}).get("contract_type") == "call"]
     puts  = [r for r in wk_rows if r.get("details", {}).get("contract_type") == "put"]
 
     def closest_iv(side_rows):
-        best = None
-        best_diff = 1e18
+        best, best_diff = None, 1e18
         for r in side_rows:
             strike = r.get("details", {}).get("strike_price")
             iv     = r.get("implied_volatility")
             if isinstance(strike, (int,float)) and isinstance(iv, (int,float)):
                 diff = abs(float(strike) - price)
-                if diff < best_diff:
-                    best_diff = diff
-                    best = float(iv)
+                if diff < best_diff: best_diff, best = diff, float(iv)
         return best
 
-    c_iv = closest_iv(calls)
-    p_iv = closest_iv(puts)
-    if c_iv is None and p_iv is None:
-        return price, None, None
+    c_iv, p_iv = closest_iv(calls), closest_iv(puts)
+    if c_iv is None and p_iv is None: return price, None, None
+    iv_annual = c_iv if p_iv is None else p_iv if c_iv is None else (c_iv + p_iv)/2.0
 
-    # متوسط IV السنوي عند الـ ATM (لو أحدهما مفقود، استخدم الآخر)
-    if c_iv is None: iv_annual = p_iv
-    elif p_iv is None: iv_annual = c_iv
-    else: iv_annual = (c_iv + p_iv) / 2.0
-
-    # أيام فعليّة حتى الانقضاء
     y, m, d = map(int, weekly_expiry.split("-"))
     exp_date = dt.date(y, m, d)
     days = max((exp_date - TODAY()).days, 1)
-
-    em = price * iv_annual * math.sqrt(days / 365.0)  # :contentReference[oaicite:1]{index=1}
+    em = price * iv_annual * math.sqrt(days / 365.0)
     return price, iv_annual, em
 
 # -------------------- Update + Cache -----------------------
 def update_symbol_data(symbol):
     rows = fetch_all(symbol)
     expiries = list_future_expiries(rows)
-    if not expiries:
-        return None
+    if not expiries: return None
 
     exp_w = nearest_weekly(expiries)
     exp_m = nearest_monthly(expiries)
-
     use_monthly_for_weekly = (exp_w == exp_m)
 
     if use_monthly_for_weekly and exp_m:
         _, w_calls, w_puts = analyze_oi_iv(rows, exp_m, 3)
     else:
         _, w_calls, w_puts = analyze_oi_iv(rows, exp_w, 3) if exp_w else (None, [], [])
-
     _, m_calls, m_puts = analyze_oi_iv(rows, exp_m, 4)
 
-    # >>> EM: احسب EM الأسبوعي
     em_price, em_iv, em_value = compute_weekly_em(rows, exp_w if not use_monthly_for_weekly else exp_m)
-
-    # قصير المدى (اختياري كما في نسختك)
-    exp_short = None
-    today = dt.date.today()
-    for d in expiries:
-        y, m, dd = map(int, d.split("-"))
-        exp_date = dt.date(y, m, dd)
-        if 0 < (exp_date - today).days <= 4:
-            exp_short = d
-            break
-    _, short_calls, short_puts = analyze_oi_iv(rows, exp_short, 3) if exp_short else (None, [], [])
 
     return {
         "symbol": symbol,
-        "short": {"calls": short_calls, "puts": short_puts},
         "weekly": {"calls": w_calls, "puts": w_puts, "expiry": exp_w},
         "monthly": {"calls": m_calls, "puts": m_puts, "expiry": exp_m},
         "duplicate": use_monthly_for_weekly,
-        "em": {  # >>> EM payload
-            "price": em_price,
-            "iv_annual": em_iv,
-            "weekly_em": em_value
-        },
+        "em": {"price": em_price, "iv_annual": em_iv, "weekly_em": em_value},
         "timestamp": time.time()
     }
 
@@ -247,14 +215,12 @@ def get_symbol_data(symbol):
 # ---------------------- /all/pine --------------------------
 @app.route("/all/pine")
 def all_pine():
-    if not POLY_KEY:
-        return _err("Missing POLYGON_API_KEY", 401)
+    if not POLY_KEY: return _err("Missing POLYGON_API_KEY", 401)
 
     blocks = []
     for sym in SYMBOLS:
         data = get_symbol_data(sym)
-        if not data:
-            continue
+        if not data: continue
 
         wc_s, wc_p, wc_iv = normalize_for_pine(data["weekly"]["calls"])
         wp_s, wp_p, wp_iv = normalize_for_pine(data["weekly"]["puts"])
@@ -262,14 +228,12 @@ def all_pine():
         mp_s, mp_p, mp_iv = normalize_for_pine(data["monthly"]["puts"])
 
         dup_str = "true" if data.get("duplicate") else "false"
-
-        # >>> EM fields per symbol (None -> na)
-        em_val = data.get("em", {}).get("weekly_em")
-        em_iv  = data.get("em", {}).get("iv_annual")
-        em_prc = data.get("em", {}).get("price")
-        em_txt = "na" if em_val is None else f"{float(em_val):.6f}"
-        iv_txt = "na" if em_iv  is None else f"{float(em_iv):.6f}"
-        pr_txt = "na" if em_prc is None else f"{float(em_prc):.6f}"
+        em_val  = data.get("em", {}).get("weekly_em")
+        em_iv   = data.get("em", {}).get("iv_annual")
+        em_prc  = data.get("em", {}).get("price")
+        em_txt  = "na" if em_val is None else f"{float(em_val):.6f}"
+        iv_txt  = "na" if em_iv  is None else f"{float(em_iv):.6f}"
+        pr_txt  = "na" if em_prc is None else f"{float(em_prc):.6f}"
 
         block = f"""
 //========= {sym} =========
@@ -279,60 +243,94 @@ if syminfo.ticker == "{sym}"
 
     bool showWeekly = false
     bool showMonthly = false
-
     if mode == "Weekly"
         if duplicate_expiry
             showMonthly := true
-            showWeekly  := false
         else
             showWeekly  := true
-            showMonthly := false
-    else if mode == "Monthly"
+    else
         showMonthly := true
-        showWeekly  := false
 
-    // --- Expected Move (server) ---
-    em_value = {em_txt}         // points
-    em_iv    = {iv_txt}         // annual IV
-    em_price = {pr_txt}         // last underlying price
+    // === Option bars: per-symbol, no-dup ===
+    var line[]  optLines  = array.new_line()
+    var label[] optLabels = array.new_label()
 
-    // --- Option bars (كما هي)
+    clear_visuals() =>
+        for l in optLines
+            line.delete(l)
+        for lb in optLabels
+            label.delete(lb)
+        array.clear(optLines)
+        array.clear(optLabels)
+
+    draw_side(_s, _p, _iv, _col) =>
+        if array.size(_s) > 0 and array.size(_p) > 0 and array.size(_iv) > 0
+            for i = 0 to array.size(_s) - 1
+                y  = array.get(_s, i)
+                p  = array.get(_p, i)
+                iv = array.get(_iv, i)
+                alpha   = 90 - int(p * 70)
+                bar_col = color.new(_col, alpha)
+                bar_len = int(math.max(10, p * 100))
+                ln  = line.new(bar_index + 3, y, bar_index + bar_len - 12, y, color=bar_col, width=6)
+                lb  = label.new(bar_index + bar_len + 2, y, str.tostring(p*100, "#.##") + "% | IV " + str.tostring(iv*100, "#.##") + "%", style=label.style_none, textcolor=color.white, size=size.small)
+                array.push(optLines, ln)
+                array.push(optLabels, lb)
+
+    clear_visuals()
     if showWeekly
         draw_side({arr_or_empty(wc_s)}, {arr_or_empty(wc_p)}, {arr_or_empty(wc_iv)}, color.lime)
-        draw_side({arr_or_empty(wp_s)}, {arr_or_empty(wp_p)}, {arr_or_empty(wp_iv)}, color.red)
-
+        draw_side({arr_or_empty(wp_s)}, {arr_or_empty(wp_p)}, {arr_or_empty(wp_iv)}, color.rgb(220,50,50))
     if showMonthly
         draw_side(array.from({to_pine_array(mc_s)}), array.from({to_pine_array(mc_p)}), array.from({to_pine_array(mc_iv)}), color.new(color.green, 0))
         draw_side(array.from({to_pine_array(mp_s)}), array.from({to_pine_array(mp_p)}), array.from({to_pine_array(mp_iv)}), color.new(#b02727, 0))
 
-    // --- Weekly open as center ----
-    // === خطوط المدى الأسبوعي المتوقع بدون تكرار ===
-    var line emTop  = na
-    var line emBot  = na
+    // === Expected Move lines (centered at current price 1h), no-dup ===
+    em_value = {em_txt}
+    em_iv    = {iv_txt}
+    em_price = {pr_txt}
+
+    // مركز حول السعر الحالي (1h) لضمان تحديث حي حتى على فريم أسبوعي
+    currentPrice = request.security(syminfo.tickerid, "1h", close)
+
+    // خطوط مُنشأة مرة واحدة وتُحدّث بدون تكرار
+    var line emTop  = line.new(na, na, na, na)
+    var line emBot  = line.new(na, na, na, na)
     var label emTopL = na
     var label emBotL = na
 
-    // السعر الحالي كأساس (وليس افتتاح الأسبوع)
-    currentPrice = request.security(syminfo.tickerid, timeframe.period, close)
-
-    if barstate.islast and not na(em_value)
+    if not na(em_value)
         up = currentPrice + em_value
         dn = currentPrice - em_value
 
-        // حذف أي خطوط سابقة
-        if not na(emTop)
-            line.delete(emTop)
-            line.delete(emBot)
+        // خطوط ذهبية واضحة على الوضعين
+        gold = color.rgb(255, 215, 0)
+
+        line.set_xy1(emTop, bar_index - 5, up)
+        line.set_xy2(emTop, bar_index + 5, up)
+        line.set_xy1(emBot, bar_index - 5, dn)
+        line.set_xy2(emBot, bar_index + 5, dn)
+        line.set_extend(emTop, extend.both)
+        line.set_extend(emBot, extend.both)
+        line.set_color(emTop, color.new(gold, 0))
+        line.set_color(emBot, color.new(gold, 0))
+        line.set_width(emTop, 2)
+        line.set_width(emBot, 2)
+        line.set_style(emTop, line.style_dotted)
+        line.set_style(emBot, line.style_dotted)
+
+        // ليبل بخلفية ذهبية ونص أسود (واضح على الأسود والأبيض)
+        if not na(emTopL)
             label.delete(emTopL)
+        if not na(emBotL)
             label.delete(emBotL)
 
-        // رسم خطي المدى مرة واحدة فقط
-        emTop  := line.new(bar_index, up, bar_index + 1, up, extend = extend.both, color = color.new(color.yellow, 0), width = 2, style = line.style_dotted)
-        emBot  := line.new(bar_index, dn, bar_index + 1, dn, extend = extend.both, color = color.new(color.yellow, 0), width = 2, style = line.style_dotted)
-        emTopL := label.new(bar_index, up, "📈 أعلى مدى متوقع: " + str.tostring(up, "#.##"),style = label.style_label_down, color = color.new(color.yellow, 0),textcolor = color.black, size = size.small)
-        emBotL := label.new(bar_index, dn, "📉 أدنى مدى متوقع: " + str.tostring(dn, "#.##"),style = label.style_label_up, color = color.new(color.yellow, 0),textcolor = color.black, size = size.small)
-
-
+        emTopL := label.new(bar_index, up, "📈 أعلى مدى متوقع: " + str.tostring(up, "#.##"),
+            style = label.style_label_down, color = color.new(gold, 0),
+            textcolor = color.black, size = size.small)
+        emBotL := label.new(bar_index, dn, "📉 أدنى مدى متوقع: " + str.tostring(dn, "#.##"),
+            style = label.style_label_up, color = color.new(gold, 0),
+            textcolor = color.black, size = size.small)
 """
         blocks.append(block)
 
@@ -341,37 +339,15 @@ if syminfo.ticker == "{sym}"
 
     pine = f"""//@version=5
 // Last Update (Riyadh): {last_update}
-indicator("GEX PRO + Weekly EM", overlay=true, max_lines_count=500, max_labels_count=500, dynamic_requests=true)
+indicator("GEX PRO + Weekly EM (v4.9)", overlay=true, max_lines_count=500, max_labels_count=500, dynamic_requests=true)
 
-// إعدادات عامة موجودة لديك
+// إعدادات عامة
 mode = input.string("Weekly", "Expiry Mode", options=["Weekly","Monthly"])
-showHVL   = true
+showHVL   = input.bool(true, "Show HVL", inline="hvl")
 baseColor = color.new(color.yellow, 0)
 zoneWidth = 2.0
 
-draw_side(_s, _p, _iv, _col) =>
-    if array.size(_s) == 0 or array.size(_p) == 0 or array.size(_iv) == 0
-        na
-    else
-        var line[]  linesArr  = array.new_line()
-        var label[] labelsArr = array.new_label()
-        for l in linesArr
-            line.delete(l)
-        for lb in labelsArr
-            label.delete(lb)
-        array.clear(linesArr)
-        array.clear(labelsArr)
-        for i = 0 to array.size(_s) - 1
-            y  = array.get(_s, i)
-            p  = array.get(_p, i)
-            iv = array.get(_iv, i)
-            alpha   = 90 - int(p * 70)
-            bar_col = color.new(_col, alpha)
-            bar_len = int(math.max(10, p * 100))
-            lineRef  = line.new(bar_index + 3, y, bar_index + bar_len - 12, y, color=bar_col, width=6)
-            labelRef = label.new(bar_index + bar_len + 2, y, str.tostring(p*100, "#.##") + "% | IV " + str.tostring(iv*100, "#.##") + "%", style=label.style_none, textcolor=color.white, size=size.small)
-
-// ---- per-symbol blocks ----
+// --- Per-symbol blocks ---
 {''.join(blocks)}
 """
     return Response(pine, mimetype="text/plain")
@@ -389,7 +365,7 @@ def all_json():
                 "weekly": {
                     "expiry": data["weekly"].get("expiry"),
                     "calls": [{"strike": s, "oi": oi, "iv": iv} for (s, oi, iv) in data["weekly"]["calls"]],
-                    "puts":  [{"strike": s, "oi": oi, "iv": iv} for (s, oi, iv) in data["weekly"]["puts"]],
+                    "puts":  [{"strike": s, "oi": oi, "iv": iv) for (s, oi, iv) in data["weekly"]["puts"]],
                 },
                 "monthly": {
                     "expiry": data["monthly"].get("expiry"),
@@ -399,7 +375,6 @@ def all_json():
                 "em": data.get("em"),
                 "timestamp": data["timestamp"]
             }
-
     return jsonify({
         "status": "OK",
         "symbols": SYMBOLS,
@@ -407,7 +382,7 @@ def all_json():
         "data": all_data
     })
 
-# ---------------------- /em/json (جديد) --------------------
+# ---------------------- /em/json ---------------------------
 @app.route("/em/json")
 def em_json():
     if not POLY_KEY:
@@ -425,7 +400,7 @@ def home():
     return jsonify({
         "status": "OK ✅",
         "symbols": SYMBOLS,
-        "author": "Bassam GEX PRO v4.7 – Weekly EM",
+        "author": "Bassam GEX PRO v4.9 – Weekly EM",
         "interval": "240m ثابت",
         "update": "كل ساعة تلقائيًا",
         "usage": {"all_pine": "/all/pine", "all_json": "/all/json", "em_json": "/em/json"},
