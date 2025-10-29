@@ -351,6 +351,23 @@ showHVL   = input.bool(true, "Show HVL", inline="hvl")
 baseColor = color.new(color.yellow, 0)
 zoneWidth = 2.0
 
+// تعريف المتغيرات الأساسية قبل الاستخدام
+var bool showWeekly  = false
+var bool showMonthly = false
+
+// دالة رسم الأشرطة الخاصة بالأوبشن
+draw_side(_s, _p, _iv, _col) =>
+    if array.size(_s) > 0 and array.size(_p) > 0 and array.size(_iv) > 0
+        for i = 0 to array.size(_s) - 1
+            y  = array.get(_s, i)
+            p  = array.get(_p, i)
+            iv = array.get(_iv, i)
+            alpha   = 90 - int(p * 70)
+            bar_col = color.new(_col, alpha)
+            bar_len = int(math.max(10, p * 100))
+            line.new(bar_index + 3, y, bar_index + bar_len - 12, y, color=bar_col, width=6)
+            label.new(bar_index + bar_len + 2, y, str.tostring(p*100, "#.##") + "% | IV " + str.tostring(iv*100, "#.##") + "%", style=label.style_none, textcolor=color.white, size=size.small)
+
 // --- Per-symbol blocks ---
 {''.join(blocks)}
 """
