@@ -401,15 +401,30 @@ def em_json():
 # ------------------------ Root -----------------------------
 @app.route("/")
 def home():
+    # استجابة سريعة جدًا لنجاح النشر
     return jsonify({
         "status": "OK ✅",
-        "symbols": SYMBOLS,
-        "author": "Bassam GEX PRO v4.9 – Weekly EM",
-        "interval": "240m ثابت",
-        "update": "كل ساعة تلقائيًا",
-        "usage": {"all_pine": "/all/pine", "all_json": "/all/json", "em_json": "/em/json"},
-        "cache_items": len(CACHE)
+        "message": "Bassam GEX PRO server is running",
+        "note": "Data cache loading in background..."
     })
 
+
+# ------------------------ Background Loader -----------------------------
+def warmup_cache():
+    """تحميل بيانات الشركات بعد التشغيل بدون تعطيل السيرفر"""
+    print("🔄 Warming up cache in background...")
+    for sym in SYMBOLS:
+        try:
+            get_symbol_data(sym)
+            print(f"✅ Cached {sym}")
+        except Exception as e:
+            print(f"⚠️ Failed to cache {sym}: {e}")
+    print("✅ Cache warm-up complete.")
+
+
 if __name__ == "__main__":
+    import threading
+    # تشغيل تحميل البيانات في الخلفية بعد الإقلاع
+    threading.Thread(target=warmup_cache, daemon=True).start()
+    # تشغيل السيرفر نفسه
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
