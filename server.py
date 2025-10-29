@@ -306,29 +306,32 @@ if syminfo.ticker == "{sym}"
         draw_side(array.from({to_pine_array(mp_s)}), array.from({to_pine_array(mp_p)}), array.from({to_pine_array(mp_iv)}), color.new(#b02727, 0))
 
     // --- Weekly open as center ----
-    wkOpen = request.security(syminfo.tickerid, timeframe.period, close)
-
-    var line emTop = na
-    var line emBot = na
+    // === خطوط المدى الأسبوعي المتوقع بدون تكرار ===
+    var line emTop  = na
+    var line emBot  = na
     var label emTopL = na
     var label emBotL = na
 
+    // السعر الحالي كأساس (وليس افتتاح الأسبوع)
+    currentPrice = request.security(syminfo.tickerid, timeframe.period, close)
+
     if barstate.islast and not na(em_value)
-    up = wkOpen + em_value
-    dn = wkOpen - em_value
+        up = currentPrice + em_value
+        dn = currentPrice - em_value
 
-    // حذف القديم إن وجد
-    if not na(emTop)
-        line.delete(emTop)
-        line.delete(emBot)
-        label.delete(emTopL)
-        label.delete(emBotL)
+        // حذف أي خطوط سابقة
+        if not na(emTop)
+            line.delete(emTop)
+            line.delete(emBot)
+            label.delete(emTopL)
+            label.delete(emBotL)
 
-    // رسم جديد لمرة واحدة فقط في آخر شمعة
-    emTop  := line.new(bar_index - 5, up, bar_index + 5, up, extend = extend.both, color = color.new(color.yellow, 0), width = 2, style = line.style_dotted)
-    emBot  := line.new(bar_index - 5, dn, bar_index + 5, dn, extend = extend.both, color = color.new(color.yellow, 0), width = 2, style = line.style_dotted)
-    emTopL := label.new(bar_index, up, "📈 أعلى مدى متوقع: " + str.tostring(up, "#.##"), style = label.style_label_down, color = color.new(color.yellow, 0), textcolor = color.black, size = size.small)
-    emBotL := label.new(bar_index, dn, "📉 أدنى مدى متوقع: " + str.tostring(dn, "#.##"), style = label.style_label_up, color = color.new(color.yellow, 0), textcolor = color.black, size = size.small)
+        // رسم خطي المدى مرة واحدة فقط
+        emTop  := line.new(bar_index, up, bar_index + 1, up, extend = extend.both, color = color.new(color.yellow, 0), width = 2, style = line.style_dotted)
+        emBot  := line.new(bar_index, dn, bar_index + 1, dn, extend = extend.both, color = color.new(color.yellow, 0), width = 2, style = line.style_dotted)
+        emTopL := label.new(bar_index, up, "📈 أعلى مدى متوقع: " + str.tostring(up, "#.##"),style = label.style_label_down, color = color.new(color.yellow, 0),textcolor = color.black, size = size.small)
+        emBotL := label.new(bar_index, dn, "📉 أدنى مدى متوقع: " + str.tostring(dn, "#.##"),style = label.style_label_up, color = color.new(color.yellow, 0),textcolor = color.black, size = size.small)
+
 
 """
         blocks.append(block)
@@ -338,7 +341,7 @@ if syminfo.ticker == "{sym}"
 
     pine = f"""//@version=5
 // Last Update (Riyadh): {last_update}
-indicator("GEX PRO + Weekly EM", overlay=true, max_lines_count=800, max_labels_count=800, dynamic_requests=true)
+indicator("GEX PRO + Weekly EM", overlay=true, max_lines_count=500, max_labels_count=500, dynamic_requests=true)
 
 // إعدادات عامة موجودة لديك
 mode = input.string("Weekly", "Expiry Mode", options=["Weekly","Monthly"])
