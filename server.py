@@ -321,7 +321,7 @@ if syminfo.ticker == "{sym}"
 
             h_top := line.new(bar_index - 10, h_top_y, bar_index + 10, h_top_y, extend = extend.both, color = color.new(colHVL, 0), width = 1, style = line.style_dotted)
             h_bot := line.new(bar_index - 10, h_bot_y, bar_index + 10, h_bot_y, extend = extend.both, color = color.new(colHVL, 0), width = 1, style = line.style_dotted)
-            h_lab := label.new(bar_index - 5, hvl_y, " منطقة شهرية متوقعه  " + str.tostring(hvl_y, "#.##") + (colHVL == color.lime ? "  (🟢)" : colHVL == color.red ? "  (🔴)" : "  (🟡)") + " ±" + str.tostring(zoneWidth, "#.##") + "%", style = label.style_label_right, textcolor = color.black, color = colHVL, size = size.small)
+            //h_lab := label.new(bar_index - 5, hvl_y, " منطقة شهرية متوقعه  " + str.tostring(hvl_y, "#.##") + (colHVL == color.lime ? "  (🟢)" : colHVL == color.red ? "  (🔴)" : "  (🟡)") + " ±" + str.tostring(zoneWidth, "#.##") + "%", style = label.style_label_right, textcolor = color.black, color = colHVL, size = size.small)
   
     var label hvlWeeklyLabel = na
     var label hvlMonthlyLabel = na
@@ -338,7 +338,7 @@ if syminfo.ticker == "{sym}"
             yW = array.get(w_s, w_idx)
             if not na(hvlWeeklyLabel)
                 label.delete(hvlWeeklyLabel)
-            hvlWeeklyLabel := label.new(bar_index, yW, "  منطقة اسبوعية متوقعه ",color=color.new(color.yellow, 50),textcolor=color.black,style=label.style_label_left,size=size.tiny)
+            //hvlWeeklyLabel := label.new(bar_index, yW, "  منطقة اسبوعية متوقعه ",color=color.new(color.yellow, 50),textcolor=color.black,style=label.style_label_left,size=size.tiny)
 
         int   m_idx = na
         float m_max = -1e10
@@ -394,10 +394,11 @@ array.clear(uniq), array.clear(freq)
 for i = 0 to array.size(wkRanges) - 1
     v  = roundToBucket(array.get(wkRanges, i))
     int pos = na
-    for j = 0 to array.size(uniq) - 1
-        if array.get(uniq, j) == v
-            pos := j
-            break
+    if array.size(uniq) > 0
+        for j = 0 to array.size(uniq) - 1
+            if array.get(uniq, j) == v
+                pos := j
+                break
     if na(pos)
         array.push(uniq, v)
         array.push(freq, 1)
@@ -411,7 +412,6 @@ for j = 0 to array.size(uniq) - 1
         modeCount := array.get(freq, j)
         modeVal   := array.get(uniq, j)
 
-// حساب أطول سلسلة متتابعة
 longestStreak = 0
 curr = 0
 for i = 0 to array.size(wkRanges) - 1
@@ -423,7 +423,6 @@ for i = 0 to array.size(wkRanges) - 1
     else
         curr := 0
 
-// استخدم modeVal إذا (≥10 متتابعة أو ≥20 إجمالي) وإلا استخدم المدى الأقصى
 maxRange = 0.0
 for i = 0 to array.size(wkRanges) - 1
     r = array.get(wkRanges, i)
@@ -434,14 +433,18 @@ effWeeklyRange = (longestStreak >= 10 or modeCount >= 20) ? modeVal : maxRange
 weeklyUpper = close + effWeeklyRange
 weeklyLower = close - effWeeklyRange
 
-// رسم الخطوط والليبلات
 var line topLine = na
 var line botLine = na
 var label topLbl = na
 var label botLbl = na
 
-if barstate.islast
-    if not na(topLine)
+if not na(weeklyUpper) and not na(weeklyLower)
+    if na(topLine)
+        topLine := line.new(bar_index - 5, weeklyUpper, bar_index + 5, weeklyUpper, extend=extend.both, color=color.new(color.red, 0), style=line.style_dotted)
+        botLine := line.new(bar_index - 5, weeklyLower, bar_index + 5, weeklyLower, extend=extend.both, color=color.new(color.red, 0), style=line.style_dotted)
+        topLbl  := label.new(bar_index + 6, weeklyUpper, "📈 أعلى مدى أسبوعي " + str.tostring(weeklyUpper, "#.##"), yloc=yloc.abovebar, style=label.style_label_left, textcolor=color.black, color=color.new(color.yellow, 0), size=size.small)
+        botLbl  := label.new(bar_index + 6, weeklyLower, "📉 أدنى مدى أسبوعي " + str.tostring(weeklyLower, "#.##"), yloc=yloc.belowbar, style=label.style_label_left, textcolor=color.black, color=color.new(color.yellow, 0), size=size.small)
+    else
         line.set_xy1(topLine, bar_index - 5, weeklyUpper)
         line.set_xy2(topLine, bar_index + 5, weeklyUpper)
         line.set_xy1(botLine, bar_index - 5, weeklyLower)
@@ -450,11 +453,7 @@ if barstate.islast
         label.set_text(topLbl, "📈 أعلى مدى أسبوعي " + str.tostring(weeklyUpper, "#.##"))
         label.set_xy(botLbl, bar_index + 6, weeklyLower)
         label.set_text(botLbl, "📉 أدنى مدى أسبوعي " + str.tostring(weeklyLower, "#.##"))
-    else
-        topLine := line.new(bar_index - 5, weeklyUpper, bar_index + 5, weeklyUpper, extend=extend.both, color=color.new(color.red, 0), style=line.style_dotted)
-        botLine := line.new(bar_index - 5, weeklyLower, bar_index + 5, weeklyLower, extend=extend.both, color=color.new(color.red, 0), style=line.style_dotted)
-        topLbl := label.new(bar_index + 6, weeklyUpper, "📈 أعلى مدى أسبوعي " + str.tostring(weeklyUpper, "#.##"), style=label.style_label_left, textcolor=color.black, color=color.new(color.yellow, 0), size=size.tiny)
-        botLbl := label.new(bar_index + 6, weeklyLower, "📉 أدنى مدى أسبوعي " + str.tostring(weeklyLower, "#.##"), style=label.style_label_left, textcolor=color.black, color=color.new(color.yellow, 0), size=size.tiny)
+
 
 //--------------------------------------------------------------
 // GEX Logic 
