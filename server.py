@@ -252,30 +252,38 @@ if syminfo.ticker == "{sym}"
         showMonthly := true
 
     // === Option bars: per-symbol, no-dup ===
-    var line[]  optLines  = array.new_line()
-    var label[] optLabels = array.new_label()
 
-    clear_visuals() =>
+// نهيئ المصفوفات مرة واحدة فقط
+var line[]  optLines  = array.new_line()
+var label[] optLabels = array.new_label()
+
+// دالة تنظيف جميع الرسومات القديمة
+clear_visuals() =>
+    if array.size(optLines) > 0
         for l in optLines
             line.delete(l)
+        array.clear(optLines)
+    if array.size(optLabels) > 0
         for lb in optLabels
             label.delete(lb)
-        array.clear(optLines)
         array.clear(optLabels)
 
-    draw_side(_s, _p, _iv, _col) =>
-        if array.size(_s) > 0 and array.size(_p) > 0 and array.size(_iv) > 0
-            for i = 0 to array.size(_s) - 1
-                y  = array.get(_s, i)
-                p  = array.get(_p, i)
-                iv = array.get(_iv, i)
-                alpha   = 90 - int(p * 70)
-                bar_col = color.new(_col, alpha)
-                bar_len = int(math.max(10, p * 100))
-                ln  = line.new(bar_index + 3, y, bar_index + bar_len - 12, y, color=bar_col, width=6)
-                lb  = label.new(bar_index + bar_len + 2, y, str.tostring(p*100, "#.##") + "% | IV " + str.tostring(iv*100, "#.##") + "%", style=label.style_none, textcolor=color.white, size=size.small)
-                array.push(optLines, ln)
-                array.push(optLabels, lb)
+// دالة رسم الأشرطة الخاصة بالأوبشن
+draw_side(_s, _p, _iv, _col) =>
+    // تنظيف الرسومات السابقة قبل رسم الجديد
+    clear_visuals()
+    if array.size(_s) > 0 and array.size(_p) > 0 and array.size(_iv) > 0
+        for i = 0 to array.size(_s) - 1
+            y  = array.get(_s, i)
+            p  = array.get(_p, i)
+            iv = array.get(_iv, i)
+            alpha   = 90 - int(p * 70)
+            bar_col = color.new(_col, alpha)
+            bar_len = int(math.max(10, p * 100))
+            ln  = line.new(bar_index + 3, y, bar_index + bar_len - 12, y, color=bar_col, width=6)
+            lb  = label.new(bar_index + bar_len + 2, y, str.tostring(p*100, "#.##") + "% | IV " + str.tostring(iv*100, "#.##") + "%", style=label.style_none, textcolor=color.white, size=size.small)
+            array.push(optLines, ln)
+            array.push(optLabels, lb)
 
     clear_visuals()
     if showWeekly
@@ -325,12 +333,8 @@ if syminfo.ticker == "{sym}"
         if not na(emBotL)
             label.delete(emBotL)
 
-        emTopL := label.new(bar_index, up, "📈 أعلى مدى متوقع: " + str.tostring(up, "#.##"),
-            style = label.style_label_down, color = color.new(gold, 0),
-            textcolor = color.black, size = size.small)
-        emBotL := label.new(bar_index, dn, "📉 أدنى مدى متوقع: " + str.tostring(dn, "#.##"),
-            style = label.style_label_up, color = color.new(gold, 0),
-            textcolor = color.black, size = size.small)
+        emTopL := label.new(bar_index, up, "📈 أعلى مدى متوقع: " + str.tostring(up, "#.##"),style = label.style_label_down, color = color.new(gold, 0),textcolor = color.black, size = size.small)
+        emBotL := label.new(bar_index, dn, "📉 أدنى مدى متوقع: " + str.tostring(dn, "#.##"),style = label.style_label_up, color = color.new(gold, 0),textcolor = color.black, size = size.small)
 """
         blocks.append(block)
 
