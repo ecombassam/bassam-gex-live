@@ -365,7 +365,7 @@ def all_json():
                 "weekly": {
                     "expiry": data["weekly"].get("expiry"),
                     "calls": [{"strike": s, "oi": oi, "iv": iv} for (s, oi, iv) in data["weekly"]["calls"]],
-                    "puts":  [{"strike": s, "oi": oi, "iv": iv) for (s, oi, iv) in data["weekly"]["puts"]],
+                    "puts":  [{"strike": s, "oi": oi, "iv": iv} for (s, oi, iv) in data["weekly"]["puts"]],
                 },
                 "monthly": {
                     "expiry": data["monthly"].get("expiry"),
