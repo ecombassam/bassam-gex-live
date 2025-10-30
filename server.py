@@ -259,17 +259,17 @@ var line[]  optLines  = array.new_line()
 var label[] optLabels = array.new_label()
 
 // دالة تنظيف جميع الرسومات القديمة
-clear_visuals() =>
-    if array.size(optLines) > 0
-        for l in optLines
+clear_visuals(_optLines, _optLabels) =>
+    if array.size(_optLines) > 0
+        for l in _optLines
             line.delete(l)
-        array.clear(optLines)
-    if array.size(optLabels) > 0
-        for lb in optLabels
+        array.clear(_optLines)
+    if array.size(_optLabels) > 0
+        for lb in _optLabels
             label.delete(lb)
-        array.clear(optLabels)
+        array.clear(_optLabels)
 
-    clear_visuals()
+    clear_visuals(optLines, optLabels)
     if showWeekly
         draw_side({arr_or_empty(wc_s)}, {arr_or_empty(wc_p)}, {arr_or_empty(wc_iv)}, color.lime)
         draw_side({arr_or_empty(wp_s)}, {arr_or_empty(wp_p)}, {arr_or_empty(wp_iv)}, color.rgb(220,50,50))
