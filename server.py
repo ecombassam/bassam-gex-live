@@ -241,8 +241,9 @@ if syminfo.ticker == "{sym}"
     title = " PRO • " + mode + " | {sym}"
     duplicate_expiry = {dup_str}
 
-    bool showWeekly = false
-    bool showMonthly = false
+    showWeekly := false
+    showMonthly := false
+
     if mode == "Weekly"
         if duplicate_expiry
             showMonthly := true
@@ -267,23 +268,6 @@ clear_visuals() =>
         for lb in optLabels
             label.delete(lb)
         array.clear(optLabels)
-
-// دالة رسم الأشرطة الخاصة بالأوبشن
-draw_side(_s, _p, _iv, _col) =>
-    // تنظيف الرسومات السابقة قبل رسم الجديد
-    clear_visuals()
-    if array.size(_s) > 0 and array.size(_p) > 0 and array.size(_iv) > 0
-        for i = 0 to array.size(_s) - 1
-            y  = array.get(_s, i)
-            p  = array.get(_p, i)
-            iv = array.get(_iv, i)
-            alpha   = 90 - int(p * 70)
-            bar_col = color.new(_col, alpha)
-            bar_len = int(math.max(10, p * 100))
-            ln  = line.new(bar_index + 3, y, bar_index + bar_len - 12, y, color=bar_col, width=6)
-            lb  = label.new(bar_index + bar_len + 2, y, str.tostring(p*100, "#.##") + "% | IV " + str.tostring(iv*100, "#.##") + "%", style=label.style_none, textcolor=color.white, size=size.small)
-            array.push(optLines, ln)
-            array.push(optLabels, lb)
 
     clear_visuals()
     if showWeekly
