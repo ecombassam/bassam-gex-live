@@ -106,16 +106,18 @@ def analyze_oi_iv(rows, expiry, per_side_limit, split_by_price=True):
         det = r.get("details", {})
         strike = det.get("strike_price")
         ctype  = det.get("contract_type")
-        # نحسب Gamma Exposure بدلاً من OI
+        # 🔹 نحاول جلب Gamma Exposure الحقيقي، وإذا ما توفر نحسبه تقريبياً
+        gamma = r.get("gamma_exposure")
         if gamma is None:
             greeks = r.get("greeks", {})
             gamma_val = greeks.get("gamma", 0)
             oi_val = r.get("open_interest", 0)
-            gamma = gamma_val * oi_val * 100
-        iv    = r.get("implied_volatility")
+            gamma = gamma_val * oi_val * 100  # تقريب لحجم التعرض الجاما
 
+        iv = r.get("implied_volatility")
         if not (isinstance(strike, (int, float)) and isinstance(gamma, (int, float))):
             continue
+
 
         iv = float(iv) if isinstance(iv, (int, float)) else 0.0
 
