@@ -254,21 +254,6 @@ if syminfo.ticker == "{sym}"
 
     // === Option bars: per-symbol, no-dup ===
 
-// نهيئ المصفوفات مرة واحدة فقط
-var line[]  optLines  = array.new_line()
-var label[] optLabels = array.new_label()
-
-// دالة تنظيف جميع الرسومات القديمة
-clear_visuals(_optLines, _optLabels) =>
-    if array.size(_optLines) > 0
-        for l in _optLines
-            line.delete(l)
-        array.clear(_optLines)
-    if array.size(_optLabels) > 0
-        for lb in _optLabels
-            label.delete(lb)
-        array.clear(_optLabels)
-
     clear_visuals(optLines, optLabels)
     if showWeekly
         draw_side({arr_or_empty(wc_s)}, {arr_or_empty(wc_p)}, {arr_or_empty(wc_iv)}, color.lime)
@@ -339,7 +324,11 @@ zoneWidth = 2.0
 var bool showWeekly  = false
 var bool showMonthly = false
 
-// دالة تنظيف جميع الرسومات القديمة (تعريف واحد فقط في الأعلى)
+// مصفوفات للرسم العام
+var line[]  optLines  = array.new_line()
+var label[] optLabels = array.new_label()
+
+// دالة تنظيف جميع الرسومات القديمة
 clear_visuals(_optLines, _optLabels) =>
     if array.size(_optLines) > 0
         for l in _optLines
