@@ -107,7 +107,11 @@ def analyze_oi_iv(rows, expiry, per_side_limit, split_by_price=True):
         strike = det.get("strike_price")
         ctype  = det.get("contract_type")
         # نحسب Gamma Exposure بدلاً من OI
-        gamma = r.get("gamma_exposure")
+        if gamma is None:
+            greeks = r.get("greeks", {})
+            gamma_val = greeks.get("gamma", 0)
+            oi_val = r.get("open_interest", 0)
+            gamma = gamma_val * oi_val * 100
         iv    = r.get("implied_volatility")
 
         if not (isinstance(strike, (int, float)) and isinstance(gamma, (int, float))):
@@ -144,8 +148,10 @@ def to_pine_array(arr):
     return ",".join(f"{float(x):.6f}" for x in arr if x is not None)
 
 def arr_or_empty(arr):
-    txt = to_pine_array(arr)
-    return f"array.from({txt})" if txt else "array.new_float()"
+    if not arr or len(arr) == 0:
+        return "array.new_float()"
+    txt = ",".join(f"{float(x):.6f}" for x in arr)
+    return f"array.from([{txt}])"
 
 # -------------------- Expected Move (EM) -------------------
 # EM = Price * IV_annual * sqrt(days/365)
@@ -260,9 +266,11 @@ if syminfo.ticker == "{sym}"
     if showWeekly
         draw_side({arr_or_empty(wc_s)}, {arr_or_empty(wc_p)}, {arr_or_empty(wc_iv)}, color.lime)
         draw_side({arr_or_empty(wp_s)}, {arr_or_empty(wp_p)}, {arr_or_empty(wp_iv)}, color.rgb(220,50,50))
+
     if showMonthly
-        draw_side(array.from({to_pine_array(mc_s)}), array.from({to_pine_array(mc_p)}), array.from({to_pine_array(mc_iv)}), color.new(color.green, 0))
-        draw_side(array.from({to_pine_array(mp_s)}), array.from({to_pine_array(mp_p)}), array.from({to_pine_array(mp_iv)}), color.new(#b02727, 0))
+        draw_side({arr_or_empty(mc_s)}, {arr_or_empty(mc_p)}, {arr_or_empty(mc_iv)}, color.new(color.green, 0))
+        draw_side({arr_or_empty(mp_s)}, {arr_or_empty(mp_p)}, {arr_or_empty(mp_iv)}, color.new(#b02727, 0))
+
 
     // === Expected Move lines (centered at current price 1h), no-dup ===
     em_value = {em_txt}
@@ -371,13 +379,15 @@ def all_json():
             all_data[sym] = {
                 "weekly": {
                     "expiry": data["weekly"].get("expiry"),
-                    "calls": [{"strike": s, "oi": oi, "iv": iv} for (s, oi, iv) in data["weekly"]["calls"]],
-                    "puts":  [{"strike": s, "oi": oi, "iv": iv} for (s, oi, iv) in data["weekly"]["puts"]],
+                    "calls": [{"strike": s, "gamma": g, "iv": iv} for (s, g, iv) in data["weekly"]["calls"]],
+                    "puts":  [{"strike": s, "gamma": g, "iv": iv} for (s, g, iv) in data["weekly"]["puts"]],
+
                 },
                 "monthly": {
                     "expiry": data["monthly"].get("expiry"),
-                    "calls": [{"strike": s, "oi": oi, "iv": iv} for (s, oi, iv) in data["monthly"]["calls"]],
-                    "puts":  [{"strike": s, "oi": oi, "iv": iv} for (s, oi, iv) in data["monthly"]["puts"]],
+                    "calls": [{"strike": s, "gamma": g, "iv": iv} for (s, g, iv) in data["weekly"]["calls"]],
+                    "puts":  [{"strike": s, "gamma": g, "iv": iv} for (s, g, iv) in data["weekly"]["puts"]],
+
                 },
                 "em": data.get("em"),
                 "timestamp": data["timestamp"]
