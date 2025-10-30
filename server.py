@@ -1,5 +1,6 @@
 # ============================================================
-# Bassam GEX PRO v5.7 – Pure Gamma Zones + EM Only
+# Bassam GEX PRO v5.8 – Gamma Zones Local Fix (No Duplicate Vars)
+# - Fix: Local variables per symbol (no 'already defined' errors)
 # - Weekly EM centered at current price (1h)
 # - Gamma Zones: Spot Γ near price + Top3 Γ above/below
 # - Clean chart (no OI/IV bars)
@@ -72,7 +73,7 @@ def nearest_weekly(expiries):
     for d in expiries:
         try:
             y, m, dd = map(int, d.split("-"))
-            if dt.date(y, m, dd).weekday() == 4:  # Friday
+            if dt.date(y, m, dd).weekday() == 4:
                 return d
         except Exception:
             continue
@@ -103,7 +104,7 @@ def _gamma_from_row(r):
     except Exception:
         return 0.0
 
-# -------------------- Gamma zones (spot/above/below) --------
+# -------------------- Gamma zones ---------------------------
 def top_gamma_zones(rows, price, expiry):
     if not expiry or price is None:
         return None, [], []
@@ -119,19 +120,14 @@ def top_gamma_zones(rows, price, expiry):
     if not gamma_data:
         return None, [], []
 
-    # أقرب سترايك للسعر الحالي (Spot Γ)
     spot = min(gamma_data, key=lambda x: abs(x[0] - price))
-
-    # أعلى 3 Γ فوق/تحت السعر (حسب القيمة المطلقة)
     above = sorted([d for d in gamma_data if d[0] > price],
                    key=lambda x: abs(x[1]), reverse=True)[:3]
     below = sorted([d for d in gamma_data if d[0] < price],
                    key=lambda x: abs(x[1]), reverse=True)[:3]
-
     return spot, above, below
 
 # -------------------- Expected Move (EM) --------------------
-# EM = Price * IV_annual * sqrt(days/365)
 def compute_weekly_em(rows, weekly_expiry):
     if not weekly_expiry:
         return None, None, None
@@ -178,8 +174,8 @@ def update_symbol_data(symbol):
     exp_w = nearest_weekly(expiries)
     exp_m = nearest_monthly(expiries)
     use_monthly_for_weekly = (exp_w == exp_m)
-
     target_exp = exp_m if use_monthly_for_weekly else exp_w
+
     em_price, em_iv, em_value = compute_weekly_em(rows, target_exp)
     spot, above, below = top_gamma_zones(rows, em_price, target_exp)
 
@@ -189,9 +185,9 @@ def update_symbol_data(symbol):
         "duplicate": use_monthly_for_weekly,
         "em": {"price": em_price, "iv_annual": em_iv, "weekly_em": em_value},
         "gamma_zones": {
-            "spot": spot,      # (strike, gamma)
-            "above": above,    # [(strike, gamma), ...]
-            "below": below     # [(strike, gamma), ...]
+            "spot": spot,
+            "above": above,
+            "below": below
         },
         "timestamp": time.time()
     }
@@ -218,7 +214,7 @@ def all_pine():
         if not data: continue
 
         gz      = data.get("gamma_zones", {})
-        spot    = gz.get("spot")   # (strike, gamma)
+        spot    = gz.get("spot")
         above_s = strikes_only(gz.get("above"))
         below_s = strikes_only(gz.get("below"))
 
@@ -239,7 +235,7 @@ def all_pine():
 if syminfo.ticker == "{sym}"
     duplicate_expiry = {dup_str}
 
-    // === Expected Move lines (centered at current price 1h) ===
+    // === Expected Move lines ===
     em_value = {em_txt}
     em_iv    = {iv_txt}
     em_price = {pr_txt}
@@ -270,33 +266,38 @@ if syminfo.ticker == "{sym}"
             label.delete(emTopL)
         if not na(emBotL)
             label.delete(emBotL)
-        emTopL := label.new(bar_index, up, "📈 أعلى مدى متوقع: " + str.tostring(up, "#.##"), style=label.style_label_down, color=color.new(color.rgb(255,215,0), 0), textcolor=color.black, size=size.small)
-        emBotL := label.new(bar_index, dn, "📉 أدنى مدى متوقع: " + str.tostring(dn, "#.##"), style=label.style_label_up,   color=color.new(color.rgb(255,215,0), 0), textcolor=color.black, size=size.small)
+        emTopL := label.new(bar_index, up, "📈 أعلى مدى متوقع: " + str.tostring(up, "#.##"),
+            style=label.style_label_down, color=color.new(color.rgb(255,215,0), 0), textcolor=color.black, size=size.small)
+        emBotL := label.new(bar_index, dn, "📉 أدنى مدى متوقع: " + str.tostring(dn, "#.##"),
+            style=label.style_label_up, color=color.new(color.rgb(255,215,0), 0), textcolor=color.black, size=size.small)
 
     // === Gamma Zones ===
-var float spotG = {spot_txt}
+    float spotG = {spot_txt}
 
-var float[] aboveG = array.new_float()
-if "{above_txt}" != ""
-    aboveG := array.from({above_txt})
+    float[] aboveG = array.new_float()
+    if "{above_txt}" != ""
+        aboveG := array.from({above_txt})
 
-var float[] belowG = array.new_float()
-if "{below_txt}" != ""
-    belowG := array.from({below_txt})
+    float[] belowG = array.new_float()
+    if "{below_txt}" != ""
+        belowG := array.from({below_txt})
 
-if not na(spotG)
-    line.new(bar_index-3, spotG, bar_index+3, spotG, color=color.new(color.yellow, 0), width=3)
-    label.new(bar_index+6, spotG, "⚡ gamma", style=label.style_label_left, color=color.new(color.rgb(220,220,220), 0), textcolor=color.black, size=size.small)
+    if not na(spotG)
+        line.new(bar_index-3, spotG, bar_index+3, spotG, color=color.new(color.yellow, 0), width=3)
+        label.new(bar_index+6, spotG, "⚡ gamma", style=label.style_label_left,
+            color=color.new(color.rgb(220,220,220), 0), textcolor=color.black, size=size.small)
 
-for i = 0 to array.size(aboveG)-1
-    y = array.get(aboveG, i)
-    line.new(bar_index-3, y, bar_index+3, y, color=color.new(color.red, 0), width=2, style=line.style_dashed)
-    label.new(bar_index+5, y, "📈 gamma" + str.tostring(i+1), style=label.style_label_left, color=color.new(color.rgb(220,220,220), 0), textcolor=color.black, size=size.small)
+    for i = 0 to array.size(aboveG)-1
+        y = array.get(aboveG, i)
+        line.new(bar_index-3, y, bar_index+3, y, color=color.new(color.red, 0), width=2, style=line.style_dashed)
+        label.new(bar_index+5, y, "📈 gamma" + str.tostring(i+1),
+            style=label.style_label_left, color=color.new(color.rgb(220,220,220), 0), textcolor=color.black, size=size.small)
 
-for i = 0 to array.size(belowG)-1
-    y = array.get(belowG, i)
-    line.new(bar_index-3, y, bar_index+3, y, color=color.new(color.green, 0), width=2, style=line.style_dashed)
-    label.new(bar_index+5, y, "📉 gamma" + str.tostring(i+1), style=label.style_label_left, color=color.new(color.rgb(220,220,220), 0), textcolor=color.black, size=size.small)
+    for i = 0 to array.size(belowG)-1
+        y = array.get(belowG, i)
+        line.new(bar_index-3, y, bar_index+3, y, color=color.new(color.green, 0), width=2, style=line.style_dashed)
+        label.new(bar_index+5, y, "📉 gamma" + str.tostring(i+1),
+            style=label.style_label_left, color=color.new(color.rgb(220,220,220), 0), textcolor=color.black, size=size.small)
 """
         blocks.append(block)
 
@@ -305,9 +306,7 @@ for i = 0 to array.size(belowG)-1
 
     pine = f"""//@version=5
 // Last Update (Riyadh): {last_update}
-indicator("GEX PRO  (v5.7) – Gamma Zones + EM Only", overlay=true, max_lines_count=500, max_labels_count=500, dynamic_requests=true)
-
-// لا توجد أعمدة OI/IV في هذه النسخة
+indicator("GEX PRO  (v5.8) – Gamma Zones Local Fix", overlay=true, max_lines_count=500, max_labels_count=500, dynamic_requests=true)
 
 // --- Per-symbol blocks ---
 {''.join(blocks)}
@@ -353,7 +352,7 @@ def em_json():
 def home():
     return jsonify({
         "status": "OK ✅",
-        "message": "Bassam GEX PRO server is running (v5.7 - Gamma Zones + EM Only)",
+        "message": "Bassam GEX PRO v5.8 running (Local Fix)",
         "note": "Data cache loading in background..."
     })
 
