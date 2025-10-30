@@ -241,8 +241,8 @@ if syminfo.ticker == "{sym}"
     title = " PRO • " + mode + " | {sym}"
     duplicate_expiry = {dup_str}
 
-    showWeekly := false
-    showMonthly := false
+    showWeekly := true
+    showMonthly := true
 
     if mode == "Weekly"
         if duplicate_expiry
@@ -252,6 +252,15 @@ if syminfo.ticker == "{sym}"
     else
         showMonthly := true
 
+    // === Option bars: per-symbol, no-dup ===
+
+    clear_visuals(optLines, optLabels)
+    if showWeekly
+        draw_side({arr_or_empty(wc_s)}, {arr_or_empty(wc_p)}, {arr_or_empty(wc_iv)}, color.lime)
+        draw_side({arr_or_empty(wp_s)}, {arr_or_empty(wp_p)}, {arr_or_empty(wp_iv)}, color.rgb(220,50,50))
+    if showMonthly
+        draw_side(array.from({to_pine_array(mc_s)}), array.from({to_pine_array(mc_p)}), array.from({to_pine_array(mc_iv)}), color.new(color.green, 0))
+        draw_side(array.from({to_pine_array(mp_s)}), array.from({to_pine_array(mp_p)}), array.from({to_pine_array(mp_iv)}), color.new(#b02727, 0))
 
     // === Expected Move lines (centered at current price 1h), no-dup ===
     em_value = {em_txt}
@@ -303,10 +312,11 @@ if syminfo.ticker == "{sym}"
 
     pine = f"""//@version=5
 // Last Update (Riyadh): {last_update}
-indicator("GEX PRO ", overlay=true, max_lines_count=500, max_labels_count=500, dynamic_requests=true)
+indicator("GEX PRO (v4.9)", overlay=true, max_lines_count=500, max_labels_count=500, dynamic_requests=true)
 
 // إعدادات عامة
 mode = input.string("Weekly", "Expiry Mode", options=["Weekly","Monthly"])
+showHVL   = input.bool(true, "Show HVL", inline="hvl")
 baseColor = color.new(color.yellow, 0)
 zoneWidth = 2.0
 
