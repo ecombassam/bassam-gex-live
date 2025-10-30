@@ -127,8 +127,11 @@ def analyze_oi_iv(rows, expiry, per_side_limit, split_by_price=True):
         elif ctype == "put":
             puts.append((strike, gamma, iv))
         # 🔹 توحيد المقياس بحيث يكون أقوى Gamma من الجانبين (Call و Put) = 1.0 = 100%
+        # 🔹 توحيد المقياس بحيث يكون أقوى Gamma من الجانبين (Call و Put) = 1.0 = 100%
         all_gammas = [abs(g) for (_, g, _) in calls + puts if isinstance(g, (int, float))]
         global_max_gamma = max(all_gammas) if all_gammas else 1.0
+        if global_max_gamma == 0:
+            global_max_gamma = 1.0  # منع القسمة على صفر
 
         # نعيد حساب كل Gamma كنسبة من الأعلى
         def normalize_side(side):
