@@ -1,10 +1,9 @@
 # ============================================================
-# Bassam GEX PRO v5.8 – Gamma Zones Local Fix (No Duplicate Vars)
-# - Fix: Local variables per symbol (no 'already defined' errors)
-# - Weekly EM centered at current price (1h)
-# - Gamma Zones: Spot Γ near price + Top3 Γ above/below
-# - Clean chart (no OI/IV bars)
-# - Styled labels (gray bg / black text)
+# Bassam GEX PRO v5.9 – No Gamma Duplication (Final Polished)
+# - Local Gamma Zones per symbol (no overlap)
+# - No duplicated lines/labels (using barstate.islast)
+# - Weekly Expected Move (centered at current price 1h)
+# - Readable gray labels (black text)
 # ============================================================
 
 import os, json, datetime as dt, requests, time, math
@@ -241,63 +240,39 @@ if syminfo.ticker == "{sym}"
     em_price = {pr_txt}
     currentPrice = request.security(syminfo.tickerid, "60", close)
 
-    var line emTop  = line.new(na, na, na, na)
-    var line emBot  = line.new(na, na, na, na)
-    var label emTopL = na
-    var label emBotL = na
+    if barstate.islast
+        // --- Expected Move ---
+        if not na(em_value)
+            up = currentPrice + em_value
+            dn = currentPrice - em_value
+            gold = color.rgb(255,215,0)
+            line.new(bar_index-5, up, bar_index+5, up, extend=extend.both, color=gold, style=line.style_dotted, width=2)
+            line.new(bar_index-5, dn, bar_index+5, dn, extend=extend.both, color=gold, style=line.style_dotted, width=2)
+            label.new(bar_index, up, "📈 أعلى مدى متوقع: " + str.tostring(up, "#.##"), style=label.style_label_down, color=gold, textcolor=color.black, size=size.small)
+            label.new(bar_index, dn, "📉 أدنى مدى متوقع: " + str.tostring(dn, "#.##"), style=label.style_label_up, color=gold, textcolor=color.black, size=size.small)
 
-    if not na(em_value)
-        up = currentPrice + em_value
-        dn = currentPrice - em_value
-        gold = color.rgb(255, 215, 0)
-        line.set_xy1(emTop, bar_index - 5, up)
-        line.set_xy2(emTop, bar_index + 5, up)
-        line.set_xy1(emBot, bar_index - 5, dn)
-        line.set_xy2(emBot, bar_index + 5, dn)
-        line.set_extend(emTop, extend.both)
-        line.set_extend(emBot, extend.both)
-        line.set_color(emTop, color.new(gold, 0))
-        line.set_color(emBot, color.new(gold, 0))
-        line.set_width(emTop, 2)
-        line.set_width(emBot, 2)
-        line.set_style(emTop, line.style_dotted)
-        line.set_style(emBot, line.style_dotted)
-        if not na(emTopL)
-            label.delete(emTopL)
-        if not na(emBotL)
-            label.delete(emBotL)
-        emTopL := label.new(bar_index, up, "📈 أعلى مدى متوقع: " + str.tostring(up, "#.##"),
-            style=label.style_label_down, color=color.new(color.rgb(255,215,0), 0), textcolor=color.black, size=size.small)
-        emBotL := label.new(bar_index, dn, "📉 أدنى مدى متوقع: " + str.tostring(dn, "#.##"),
-            style=label.style_label_up, color=color.new(color.rgb(255,215,0), 0), textcolor=color.black, size=size.small)
+        // --- Gamma Zones ---
+        float spotG = {spot_txt}
+        float[] aboveG = array.new_float()
+        if "{above_txt}" != ""
+            aboveG := array.from({above_txt})
+        float[] belowG = array.new_float()
+        if "{below_txt}" != ""
+            belowG := array.from({below_txt})
 
-    // === Gamma Zones ===
-    float spotG = {spot_txt}
+        if not na(spotG)
+            line.new(bar_index-3, spotG, bar_index+3, spotG, color=color.yellow, width=3)
+            label.new(bar_index+6, spotG, "⚡ gamma", style=label.style_label_left, color=color.new(color.rgb(220,220,220), 0), textcolor=color.black, size=size.small)
 
-    float[] aboveG = array.new_float()
-    if "{above_txt}" != ""
-        aboveG := array.from({above_txt})
+        for i = 0 to array.size(aboveG)-1
+            y = array.get(aboveG, i)
+            line.new(bar_index-3, y, bar_index+3, y, color=color.new(color.red, 0), width=2, style=line.style_dashed)
+            label.new(bar_index+5, y, "📈 gamma" + str.tostring(i+1), style=label.style_label_left, color=color.new(color.rgb(220,220,220), 0), textcolor=color.black, size=size.small)
 
-    float[] belowG = array.new_float()
-    if "{below_txt}" != ""
-        belowG := array.from({below_txt})
-
-    if not na(spotG)
-        line.new(bar_index-3, spotG, bar_index+3, spotG, color=color.new(color.yellow, 0), width=3)
-        label.new(bar_index+6, spotG, "⚡ gamma", style=label.style_label_left,
-            color=color.new(color.rgb(220,220,220), 0), textcolor=color.black, size=size.small)
-
-    for i = 0 to array.size(aboveG)-1
-        y = array.get(aboveG, i)
-        line.new(bar_index-3, y, bar_index+3, y, color=color.new(color.red, 0), width=2, style=line.style_dashed)
-        label.new(bar_index+5, y, "📈 gamma" + str.tostring(i+1),
-            style=label.style_label_left, color=color.new(color.rgb(220,220,220), 0), textcolor=color.black, size=size.small)
-
-    for i = 0 to array.size(belowG)-1
-        y = array.get(belowG, i)
-        line.new(bar_index-3, y, bar_index+3, y, color=color.new(color.green, 0), width=2, style=line.style_dashed)
-        label.new(bar_index+5, y, "📉 gamma" + str.tostring(i+1),
-            style=label.style_label_left, color=color.new(color.rgb(220,220,220), 0), textcolor=color.black, size=size.small)
+        for i = 0 to array.size(belowG)-1
+            y = array.get(belowG, i)
+            line.new(bar_index-3, y, bar_index+3, y, color=color.new(color.green, 0), width=2, style=line.style_dashed)
+            label.new(bar_index+5, y, "📉 gamma" + str.tostring(i+1), style=label.style_label_left, color=color.new(color.rgb(220,220,220), 0), textcolor=color.black, size=size.small)
 """
         blocks.append(block)
 
@@ -306,7 +281,7 @@ if syminfo.ticker == "{sym}"
 
     pine = f"""//@version=5
 // Last Update (Riyadh): {last_update}
-indicator("GEX PRO  (v5.8) – Gamma Zones Local Fix", overlay=true, max_lines_count=500, max_labels_count=500, dynamic_requests=true)
+indicator("Bassam GEX PRO (v5.9) – No Gamma Duplication", overlay=true, max_lines_count=500, max_labels_count=500, dynamic_requests=true)
 
 // --- Per-symbol blocks ---
 {''.join(blocks)}
@@ -352,7 +327,7 @@ def em_json():
 def home():
     return jsonify({
         "status": "OK ✅",
-        "message": "Bassam GEX PRO v5.8 running (Local Fix)",
+        "message": "Bassam GEX PRO v5.9 running (No Gamma Duplication)",
         "note": "Data cache loading in background..."
     })
 
