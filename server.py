@@ -153,7 +153,7 @@ def arr_or_empty(arr):
     if not arr or len(arr) == 0:
         return "array.new_float()"
     txt = ",".join(f"{float(x):.6f}" for x in arr)
-    return f"array.from([{txt}])"
+    return f"array.from({txt})"
 
 # -------------------- Expected Move (EM) -------------------
 # EM = Price * IV_annual * sqrt(days/365)
