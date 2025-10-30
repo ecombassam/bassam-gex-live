@@ -339,6 +339,21 @@ zoneWidth = 2.0
 var bool showWeekly  = false
 var bool showMonthly = false
 
+// مصفوفات للرسم العام
+var line[]  optLines  = array.new_line()
+var label[] optLabels = array.new_label()
+
+// دالة تنظيف جميع الرسومات القديمة (تعريف واحد فقط في الأعلى)
+clear_visuals(_optLines, _optLabels) =>
+    if array.size(_optLines) > 0
+        for l in _optLines
+            line.delete(l)
+        array.clear(_optLines)
+    if array.size(_optLabels) > 0
+        for lb in _optLabels
+            label.delete(lb)
+        array.clear(_optLabels)
+
 // دالة رسم الأشرطة الخاصة بالأوبشن
 draw_side(_s, _p, _iv, _col) =>
     if array.size(_s) > 0 and array.size(_p) > 0 and array.size(_iv) > 0
