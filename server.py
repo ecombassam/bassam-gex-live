@@ -366,27 +366,30 @@ if syminfo.ticker == "{sym}"
             style = label.style_label_up, color = color.new(gold, 0), textcolor = color.black, size = size.small)
 
     // === Gamma Zones ===
-    var float spotG = {spot_txt}
-    var float[] aboveG = array.from({above_txt}) if "{above_txt}" != "" else array.new_float()
-    var float[] belowG = array.from({below_txt}) if "{below_txt}" != "" else array.new_float()
+var float spotG = {spot_txt}
 
-    // رسم المستويات
-    if not na(spotG)
-        line.new(bar_index-3, spotG, bar_index+3, spotG, color=color.new(color.yellow, 0), width=3)
-        label.new(bar_index+6, spotG, "⚡ Spot Γ",
-            style=label.style_label_left, color=color.new(color.rgb(220,220,220), 0), textcolor=color.black, size=size.small)
+var float[] aboveG = array.new_float()
+if "{above_txt}" != ""
+    aboveG := array.from({above_txt})
 
-    for i = 0 to array.size(aboveG)-1
-        y = array.get(aboveG, i)
-        line.new(bar_index-3, y, bar_index+3, y, color=color.new(color.red, 0), width=2, style=line.style_dashed)
-        label.new(bar_index+5, y, "📈 Γ+" + str.tostring(i+1),
-            style=label.style_label_left, color=color.new(color.rgb(220,220,220), 0), textcolor=color.black, size=size.small)
+var float[] belowG = array.new_float()
+if "{below_txt}" != ""
+    belowG := array.from({below_txt})
 
-    for i = 0 to array.size(belowG)-1
-        y = array.get(belowG, i)
-        line.new(bar_index-3, y, bar_index+3, y, color=color.new(color.green, 0), width=2, style=line.style_dashed)
-        label.new(bar_index+5, y, "📉 Γ-" + str.tostring(i+1),
-            style=label.style_label_left, color=color.new(color.rgb(220,220,220), 0), textcolor=color.black, size=size.small)
+if not na(spotG)
+    line.new(bar_index-3, spotG, bar_index+3, spotG, color=color.new(color.yellow, 0), width=3)
+    label.new(bar_index+6, spotG, "⚡ gamma", style=label.style_label_left, color=color.new(color.rgb(220,220,220), 0), textcolor=color.black, size=size.small)
+
+for i = 0 to array.size(aboveG)-1
+    y = array.get(aboveG, i)
+    line.new(bar_index-3, y, bar_index+3, y, color=color.new(color.red, 0), width=2, style=line.style_dashed)
+    label.new(bar_index+5, y, "📈 gamma" + str.tostring(i+1), style=label.style_label_left, color=color.new(color.rgb(220,220,220), 0), textcolor=color.black, size=size.small)
+
+for i = 0 to array.size(belowG)-1
+    y = array.get(belowG, i)
+    line.new(bar_index-3, y, bar_index+3, y, color=color.new(color.green, 0), width=2, style=line.style_dashed)
+    label.new(bar_index+5, y, "📉 gamma" + str.tostring(i+1), style=label.style_label_left, color=color.new(color.rgb(220,220,220), 0), textcolor=color.black, size=size.small)
+
 """
         blocks.append(block)
 
