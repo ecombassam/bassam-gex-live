@@ -1,9 +1,9 @@
 # ============================================================
-# Bassam GEX PRO v4.9 – Adaptive Colors + No-Dup + Live Center (1h)
-# - Weekly EM lines centered at current price (1h)
-# - No duplication of lines/labels
-# - Option bars managed per-symbol (cleared each refresh)
-# - Colors readable on both dark/light chart backgrounds
+# Bassam GEX PRO v5.5 – Gamma Zones + Unified 100% Scale + Styled Labels
+# - Weekly EM centered at current price (1h)
+# - One scale: strongest Gamma (call or put) = 100% (bar = 50 bars)
+# - Top 3 Γ above / below + spot Γ near price
+# - Readable labels (gray bg / black text)
 # ============================================================
 
 import os, json, datetime as dt, requests, time, math
@@ -90,77 +90,102 @@ def nearest_monthly(expiries):
             last_friday = d
     return last_friday or (month_list[-1] if month_list else expiries[-1])
 
-# -------------------- OI + IV analysis ---------------------
+# -------------------- OI + IV + Γ analysis -----------------
+def _gamma_from_row(r):
+    g = r.get("gamma_exposure")
+    if isinstance(g, (int, float)):
+        return float(g)
+    greeks = r.get("greeks", {})
+    gamma_val = greeks.get("gamma", 0)
+    oi_val = r.get("open_interest", 0)
+    try:
+        return float(gamma_val) * float(oi_val) * 100.0
+    except Exception:
+        return 0.0
+
 def analyze_oi_iv(rows, expiry, per_side_limit, split_by_price=True):
     rows = [r for r in rows if r.get("details", {}).get("expiration_date") == expiry]
     if not rows: return None, [], []
+
+    # السعر
     price = None
     for r in rows:
         p = r.get("underlying_asset", {}).get("price")
         if isinstance(p, (int, float)) and p > 0:
-            price = p
+            price = float(p)
             break
 
-    calls, puts = [], []
+    calls_raw, puts_raw = [], []
     for r in rows:
         det = r.get("details", {})
         strike = det.get("strike_price")
         ctype  = det.get("contract_type")
-        # 🔹 نحاول جلب Gamma Exposure الحقيقي، وإذا ما توفر نحسبه تقريبياً
-        gamma = r.get("gamma_exposure")
-        if gamma is None:
-            greeks = r.get("greeks", {})
-            gamma_val = greeks.get("gamma", 0)
-            oi_val = r.get("open_interest", 0)
-            gamma = gamma_val * oi_val * 100  # تقريب لحجم التعرض الجاما
+        iv     = r.get("implied_volatility")
+        gamma  = _gamma_from_row(r)
 
-        iv = r.get("implied_volatility")
         if not (isinstance(strike, (int, float)) and isinstance(gamma, (int, float))):
             continue
-
-
         iv = float(iv) if isinstance(iv, (int, float)) else 0.0
 
-        # نحفظها في القائمة حسب نوع العقد
+        tup = (float(strike), float(gamma), iv)
         if ctype == "call":
-            calls.append((strike, gamma, iv))
+            calls_raw.append(tup)
         elif ctype == "put":
-            puts.append((strike, gamma, iv))
-        # 🔹 توحيد المقياس بحيث يكون أقوى Gamma من الجانبين (Call و Put) = 1.0 = 100%
-        # 🔹 توحيد المقياس بحيث يكون أقوى Gamma من الجانبين (Call و Put) = 1.0 = 100%
-        all_gammas = [abs(g) for (_, g, _) in calls + puts if isinstance(g, (int, float))]
-        global_max_gamma = max(all_gammas) if all_gammas else 1.0
-        if global_max_gamma == 0:
-            global_max_gamma = 1.0  # منع القسمة على صفر
+            puts_raw.append(tup)
 
-        # نعيد حساب كل Gamma كنسبة من الأعلى
-        def normalize_side(side):
-            return [(s, (g / global_max_gamma), iv) for (s, g, iv) in side]
+    # أقوى جاما (Calls+Puts) لتوحيد المقياس
+    all_g = [abs(g) for (_, g, _) in (calls_raw + puts_raw)]
+    global_max_gamma = max(all_g) if all_g else 1.0
+    if global_max_gamma == 0:
+        global_max_gamma = 1.0
 
-        calls = normalize_side(calls)
-        puts  = normalize_side(puts)
+    def normalize_side(side):
+        return [(s, (g / global_max_gamma), iv) for (s, g, iv) in side]
 
+    calls = normalize_side(calls_raw)
+    puts  = normalize_side(puts_raw)
 
     if split_by_price and isinstance(price, (int, float)):
-        calls = [(s, oi, iv) for (s, oi, iv) in calls if s >= price]
-        puts  = [(s, oi, iv) for (s, oi, iv) in puts if s <= price]
+        calls = [(s, p, iv) for (s, p, iv) in calls if s >= price]
+        puts  = [(s, p, iv) for (s, p, iv) in puts  if s <= price]
 
     top_calls = sorted(calls, key=lambda x: x[1], reverse=True)[:per_side_limit]
     top_puts  = sorted(puts,  key=lambda x: x[1], reverse=True)[:per_side_limit]
     return price, top_calls, top_puts
 
-# -------------------- Pine normalization -------------------
+# -------------------- Gamma zones (spot/above/below) --------
+def top_gamma_zones(rows, price, expiry):
+    if not expiry or price is None:
+        return None, [], []
+
+    rows = [r for r in rows if r.get("details", {}).get("expiration_date") == expiry]
+    gamma_data = []
+    for r in rows:
+        strike = r.get("details", {}).get("strike_price")
+        gamma  = _gamma_from_row(r)
+        if isinstance(strike, (int, float)) and isinstance(gamma, (int, float)):
+            gamma_data.append((float(strike), float(gamma)))
+
+    if not gamma_data:
+        return None, [], []
+
+    # أقرب سترايك للسعر الحالي (Spot Γ)
+    spot = min(gamma_data, key=lambda x: abs(x[0] - price))
+
+    # أعلى 3 Γ فوق/تحت السعر (حسب القيمة المطلقة)
+    above = sorted([d for d in gamma_data if d[0] > price], key=lambda x: abs(x[1]), reverse=True)[:3]
+    below = sorted([d for d in gamma_data if d[0] < price], key=lambda x: abs(x[1]), reverse=True)[:3]
+
+    return spot, above, below
+
+# -------------------- Pine helpers --------------------------
 def normalize_for_pine(data):
+    """expects already-normalized g in [0..1]; keeps it; returns strikes, pcts, ivs"""
     if not data: return [], [], []
-    base = max(abs(g) for _, g, _ in data) or 1.0
     strikes = [round(float(s), 2) for (s, _, _) in data]
-    pcts    = [round((g / base), 4) for (_, g, _) in data]
-    ivs     = [round(float(iv), 4) for (_, _, iv) in data]
-
+    pcts    = [round(float(g), 4)      for (_, g, _) in data]  # already normalized
+    ivs     = [round(float(iv), 4)     for (_, _, iv) in data]
     return strikes, pcts, ivs
-
-def to_pine_array(arr):
-    return ",".join(f"{float(x):.6f}" for x in arr if x is not None)
 
 def arr_or_empty(arr):
     if not arr or len(arr) == 0:
@@ -218,19 +243,27 @@ def update_symbol_data(symbol):
     use_monthly_for_weekly = (exp_w == exp_m)
 
     if use_monthly_for_weekly and exp_m:
-        _, w_calls, w_puts = analyze_oi_iv(rows, exp_m, 3)
+        price_w, w_calls, w_puts = analyze_oi_iv(rows, exp_m, 3)
+        em_price, em_iv, em_value = compute_weekly_em(rows, exp_m)
+        spot, above, below = top_gamma_zones(rows, em_price, exp_m)
     else:
-        _, w_calls, w_puts = analyze_oi_iv(rows, exp_w, 3) if exp_w else (None, [], [])
-    _, m_calls, m_puts = analyze_oi_iv(rows, exp_m, 4)
+        price_w, w_calls, w_puts = analyze_oi_iv(rows, exp_w, 3) if exp_w else (None, [], [])
+        em_price, em_iv, em_value = compute_weekly_em(rows, exp_w)
+        spot, above, below = top_gamma_zones(rows, em_price, exp_w)
 
-    em_price, em_iv, em_value = compute_weekly_em(rows, exp_w if not use_monthly_for_weekly else exp_m)
+    _, m_calls, m_puts = analyze_oi_iv(rows, exp_m, 4)
 
     return {
         "symbol": symbol,
-        "weekly": {"calls": w_calls, "puts": w_puts, "expiry": exp_w},
+        "weekly": {"calls": w_calls, "puts": w_puts, "expiry": exp_w if not use_monthly_for_weekly else exp_m},
         "monthly": {"calls": m_calls, "puts": m_puts, "expiry": exp_m},
         "duplicate": use_monthly_for_weekly,
         "em": {"price": em_price, "iv_annual": em_iv, "weekly_em": em_value},
+        "gamma_zones": {
+            "spot": spot,      # (strike, gamma)
+            "above": above,    # [(strike, gamma), ...]
+            "below": below     # [(strike, gamma), ...]
+        },
         "timestamp": time.time()
     }
 
@@ -247,6 +280,9 @@ def get_symbol_data(symbol):
 def all_pine():
     if not POLY_KEY: return _err("Missing POLYGON_API_KEY", 401)
 
+    def strikes_only(tuples):
+        return [s for (s, _) in tuples] if tuples else []
+
     blocks = []
     for sym in SYMBOLS:
         data = get_symbol_data(sym)
@@ -256,6 +292,16 @@ def all_pine():
         wp_s, wp_p, wp_iv = normalize_for_pine(data["weekly"]["puts"])
         mc_s, mc_p, mc_iv = normalize_for_pine(data["monthly"]["calls"])
         mp_s, mp_p, mp_iv = normalize_for_pine(data["monthly"]["puts"])
+
+        # Gamma zones
+        gz      = data.get("gamma_zones", {})
+        spot    = gz.get("spot")   # (strike, gamma)
+        above_s = strikes_only(gz.get("above"))
+        below_s = strikes_only(gz.get("below"))
+
+        spot_txt = "na" if not spot else f"{float(spot[0]):.6f}"
+        above_txt = ",".join(f"{float(v):.6f}" for v in above_s) if above_s else ""
+        below_txt = ",".join(f"{float(v):.6f}" for v in below_s) if below_s else ""
 
         dup_str = "true" if data.get("duplicate") else "false"
         em_val  = data.get("em", {}).get("weekly_em")
@@ -274,9 +320,6 @@ if syminfo.ticker == "{sym}"
     showWeekly := true
     showMonthly := true
 
-
-    // === Option bars: per-symbol, no-dup ===
-
     clear_visuals(optLines, optLabels)
     if showWeekly
         draw_side({arr_or_empty(wc_s)}, {arr_or_empty(wc_p)}, {arr_or_empty(wc_iv)}, color.lime)
@@ -286,16 +329,12 @@ if syminfo.ticker == "{sym}"
         draw_side({arr_or_empty(mc_s)}, {arr_or_empty(mc_p)}, {arr_or_empty(mc_iv)}, color.new(color.green, 0))
         draw_side({arr_or_empty(mp_s)}, {arr_or_empty(mp_p)}, {arr_or_empty(mp_iv)}, color.new(#b02727, 0))
 
-
-    // === Expected Move lines (centered at current price 1h), no-dup ===
+    // === Expected Move lines (centered at current price 1h) ===
     em_value = {em_txt}
     em_iv    = {iv_txt}
     em_price = {pr_txt}
-
-    // مركز حول السعر الحالي (1h) لضمان تحديث حي حتى على فريم أسبوعي
     currentPrice = request.security(syminfo.tickerid, "60", close)
 
-    // خطوط مُنشأة مرة واحدة وتُحدّث بدون تكرار
     var line emTop  = line.new(na, na, na, na)
     var line emBot  = line.new(na, na, na, na)
     var label emTopL = na
@@ -304,10 +343,7 @@ if syminfo.ticker == "{sym}"
     if not na(em_value)
         up = currentPrice + em_value
         dn = currentPrice - em_value
-
-        // خطوط ذهبية واضحة على الوضعين
         gold = color.rgb(255, 215, 0)
-
         line.set_xy1(emTop, bar_index - 5, up)
         line.set_xy2(emTop, bar_index + 5, up)
         line.set_xy1(emBot, bar_index - 5, dn)
@@ -320,15 +356,37 @@ if syminfo.ticker == "{sym}"
         line.set_width(emBot, 2)
         line.set_style(emTop, line.style_dotted)
         line.set_style(emBot, line.style_dotted)
-
-        // ليبل بخلفية ذهبية ونص أسود (واضح على الأسود والأبيض)
         if not na(emTopL)
             label.delete(emTopL)
         if not na(emBotL)
             label.delete(emBotL)
+        emTopL := label.new(bar_index, up, "📈 أعلى مدى متوقع: " + str.tostring(up, "#.##"),
+            style = label.style_label_down, color = color.new(gold, 0), textcolor = color.black, size = size.small)
+        emBotL := label.new(bar_index, dn, "📉 أدنى مدى متوقع: " + str.tostring(dn, "#.##"),
+            style = label.style_label_up, color = color.new(gold, 0), textcolor = color.black, size = size.small)
 
-        emTopL := label.new(bar_index, up, "📈 أعلى مدى متوقع: " + str.tostring(up, "#.##"),style = label.style_label_down, color = color.new(gold, 0),textcolor = color.black, size = size.small)
-        emBotL := label.new(bar_index, dn, "📉 أدنى مدى متوقع: " + str.tostring(dn, "#.##"),style = label.style_label_up, color = color.new(gold, 0),textcolor = color.black, size = size.small)
+    // === Gamma Zones ===
+    var float spotG = {spot_txt}
+    var float[] aboveG = array.from({above_txt}) if "{above_txt}" != "" else array.new_float()
+    var float[] belowG = array.from({below_txt}) if "{below_txt}" != "" else array.new_float()
+
+    // رسم المستويات
+    if not na(spotG)
+        line.new(bar_index-3, spotG, bar_index+3, spotG, color=color.new(color.yellow, 0), width=3)
+        label.new(bar_index+6, spotG, "⚡ Spot Γ",
+            style=label.style_label_left, color=color.new(color.rgb(220,220,220), 0), textcolor=color.black, size=size.small)
+
+    for i = 0 to array.size(aboveG)-1
+        y = array.get(aboveG, i)
+        line.new(bar_index-3, y, bar_index+3, y, color=color.new(color.red, 0), width=2, style=line.style_dashed)
+        label.new(bar_index+5, y, "📈 Γ+" + str.tostring(i+1),
+            style=label.style_label_left, color=color.new(color.rgb(220,220,220), 0), textcolor=color.black, size=size.small)
+
+    for i = 0 to array.size(belowG)-1
+        y = array.get(belowG, i)
+        line.new(bar_index-3, y, bar_index+3, y, color=color.new(color.green, 0), width=2, style=line.style_dashed)
+        label.new(bar_index+5, y, "📉 Γ-" + str.tostring(i+1),
+            style=label.style_label_left, color=color.new(color.rgb(220,220,220), 0), textcolor=color.black, size=size.small)
 """
         blocks.append(block)
 
@@ -337,22 +395,19 @@ if syminfo.ticker == "{sym}"
 
     pine = f"""//@version=5
 // Last Update (Riyadh): {last_update}
-indicator("GEX PRO  (v4.9)", overlay=true, max_lines_count=500, max_labels_count=500, dynamic_requests=true)
+indicator("GEX PRO  (v5.5)", overlay=true, max_lines_count=500, max_labels_count=500, dynamic_requests=true)
 
 // إعدادات عامة
 showHVL   = input.bool(true, "Show HVL", inline="hvl")
 baseColor = color.new(color.yellow, 0)
 zoneWidth = 2.0
 
-// تعريف المتغيرات الأساسية قبل الاستخدام
 var bool showWeekly  = false
 var bool showMonthly = false
 
-// مصفوفات للرسم العام
 var line[]  optLines  = array.new_line()
 var label[] optLabels = array.new_label()
 
-// دالة تنظيف جميع الرسومات القديمة
 clear_visuals(_optLines, _optLabels) =>
     if array.size(_optLines) > 0
         for l in _optLines
@@ -363,32 +418,27 @@ clear_visuals(_optLines, _optLabels) =>
             label.delete(lb)
         array.clear(_optLabels)
 
-// دالة رسم الأشرطة الخاصة بالأوبشن (ترسم مرة واحدة فقط عند أول تشغيل)
+// يرسم الأعمدة مع مقياس موحد: أقوى عمود = 50 شمعة
 draw_side(_s, _p, _iv, _col) =>
     if barstate.islast and array.size(_s) > 0 and array.size(_p) > 0 and array.size(_iv) > 0
-        // 🔹 نحدد أطول عمود (القيمة 1.0 = 100%) ونجعل طوله 50 شمعة
         var float maxLen = 50.0
         var float maxP = array.max(_p)
         if maxP == 0
             maxP := 1.0
-
         for i = 0 to array.size(_s) - 1
             y  = array.get(_s, i)
             p  = array.get(_p, i)
             iv = array.get(_iv, i)
-
-            // 🔹 نحسب الطول النسبي بناءً على أقوى عمود
             bar_len = int(maxLen * (p / maxP))
             alpha   = 90 - int(p * 70)
             bar_col = color.new(_col, alpha)
-
             line.new(bar_index + 3, y, bar_index + bar_len - 3, y, color=bar_col, width=6)
-            // 🎨 ليبل بخلفية رمادية فاتحة ونص أسود واضح
             txt = "Well " + str.tostring(p*100, "#.##") + "% | IV " + str.tostring(iv*100, "#.##") + "%"
-            label.new(bar_index + bar_len + 2, y, txt,style = label.style_label_left,color = color.new(color.rgb(220, 220, 220), 0),textcolor = color.black,size = size.small)
-
-
-
+            label.new(bar_index + bar_len + 2, y, txt,
+                style = label.style_label_left,
+                color = color.new(color.rgb(220, 220, 220), 0),
+                textcolor = color.black,
+                size = size.small)
 
 // --- Per-symbol blocks ---
 {''.join(blocks)}
@@ -407,17 +457,16 @@ def all_json():
             all_data[sym] = {
                 "weekly": {
                     "expiry": data["weekly"].get("expiry"),
-                    "calls": [{"strike": s, "gamma": g, "iv": iv} for (s, g, iv) in data["weekly"]["calls"]],
-                    "puts":  [{"strike": s, "gamma": g, "iv": iv} for (s, g, iv) in data["weekly"]["puts"]],
-
+                    "calls": [{"strike": s, "gamma_pct": g, "iv": iv} for (s, g, iv) in data["weekly"]["calls"]],
+                    "puts":  [{"strike": s, "gamma_pct": g, "iv": iv} for (s, g, iv) in data["weekly"]["puts"]],
                 },
                 "monthly": {
                     "expiry": data["monthly"].get("expiry"),
-                    "calls": [{"strike": s, "gamma": g, "iv": iv} for (s, g, iv) in data["weekly"]["calls"]],
-                    "puts":  [{"strike": s, "gamma": g, "iv": iv} for (s, g, iv) in data["weekly"]["puts"]],
-
+                    "calls": [{"strike": s, "gamma_pct": g, "iv": iv} for (s, g, iv) in data["monthly"]["calls"]],
+                    "puts":  [{"strike": s, "gamma_pct": g, "iv": iv} for (s, g, iv) in data["monthly"]["puts"]],
                 },
                 "em": data.get("em"),
+                "gamma_zones": data.get("gamma_zones"),
                 "timestamp": data["timestamp"]
             }
     return jsonify({
@@ -442,17 +491,14 @@ def em_json():
 # ------------------------ Root -----------------------------
 @app.route("/")
 def home():
-    # استجابة سريعة جدًا لنجاح النشر
     return jsonify({
         "status": "OK ✅",
         "message": "Bassam GEX PRO server is running",
         "note": "Data cache loading in background..."
     })
 
-
-# ------------------------ Background Loader -----------------------------
+# ------------------------ Background Loader ----------------
 def warmup_cache():
-    """تحميل بيانات الشركات بعد التشغيل بدون تعطيل السيرفر"""
     print("🔄 Warming up cache in background...")
     for sym in SYMBOLS:
         try:
@@ -462,10 +508,7 @@ def warmup_cache():
             print(f"⚠️ Failed to cache {sym}: {e}")
     print("✅ Cache warm-up complete.")
 
-
 if __name__ == "__main__":
     import threading
-    # تشغيل تحميل البيانات في الخلفية بعد الإقلاع
     threading.Thread(target=warmup_cache, daemon=True).start()
-    # تشغيل السيرفر نفسه
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
