@@ -1,9 +1,5 @@
 # ============================================================
-# Bassam GEX PRO v6.0 – Gamma Zones Only + Clean Labels + Safe Arrays
-# - Removed OI/IV bars entirely
-# - Spot Γ near price + top-3 Γ above + top-3 Γ below (per nearest weekly/monthly)
-# - No duplicate lines/labels (clean per refresh)
-# - Weekly EM centered at current price (1h), unchanged
+# Bassam GEX PRO v6.1 – Fix array.from() empty call + Gamma Zones Only
 # ============================================================
 
 import os, json, datetime as dt, requests, time, math
@@ -22,7 +18,6 @@ SYMBOLS = [
 CACHE = {}
 CACHE_EXPIRY = 3600  # 1h
 
-# ---------------------- Common helpers ----------------------
 def _err(msg, http=502, data=None, sym=None):
     body = {"error": msg}
     if data is not None: body["data"] = data
@@ -40,7 +35,6 @@ def _get(url, params=None):
     except Exception:
         return r.status_code, {"error": "Invalid JSON"}
 
-# ---------------------- Polygon fetch -----------------------
 def fetch_all(symbol):
     url = f"{BASE_SNAP}/{symbol.upper()}"
     cursor, all_rows = None, []
@@ -59,7 +53,6 @@ def fetch_all(symbol):
             cursor = None
     return all_rows
 
-# ------------------------ Expiries --------------------------
 def list_future_expiries(rows):
     expiries = sorted({
         r.get("details", {}).get("expiration_date")
@@ -72,7 +65,7 @@ def nearest_weekly(expiries):
     for d in expiries:
         try:
             y, m, dd = map(int, d.split("-"))
-            if dt.date(y, m, dd).weekday() == 4:  # Friday
+            if dt.date(y, m, dd).weekday() == 4:
                 return d
         except Exception:
             continue
@@ -90,7 +83,7 @@ def nearest_monthly(expiries):
             last_friday = d
     return last_friday or (month_list[-1] if month_list else expiries[-1])
 
-# -------------------- Γ helpers -----------------------------
+# ---------- Γ helpers ----------
 def _gamma_from_row(r):
     g = r.get("gamma_exposure")
     if isinstance(g, (int, float)):
@@ -106,7 +99,6 @@ def _gamma_from_row(r):
 def top_gamma_zones(rows, price, expiry):
     if not expiry or price is None:
         return None, [], []
-
     rows = [r for r in rows if r.get("details", {}).get("expiration_date") == expiry]
     gamma_data = []
     for r in rows:
@@ -114,17 +106,14 @@ def top_gamma_zones(rows, price, expiry):
         gamma  = _gamma_from_row(r)
         if isinstance(strike, (int, float)) and isinstance(gamma, (int, float)):
             gamma_data.append((float(strike), float(gamma)))
-
     if not gamma_data:
         return None, [], []
-
-    spot = min(gamma_data, key=lambda x: abs(x[0] - price))
+    spot  = min(gamma_data, key=lambda x: abs(x[0] - price))
     above = sorted([d for d in gamma_data if d[0] > price], key=lambda x: abs(x[1]), reverse=True)[:3]
     below = sorted([d for d in gamma_data if d[0] < price], key=lambda x: abs(x[1]), reverse=True)[:3]
     return spot, above, below
 
-# -------------------- Expected Move (EM) -------------------
-# EM = Price * IV_annual * sqrt(days/365)
+# ---------- EM ----------
 def compute_weekly_em(rows, weekly_expiry):
     if not weekly_expiry:
         return None, None, None
@@ -162,7 +151,7 @@ def compute_weekly_em(rows, weekly_expiry):
     em = price * iv_annual * math.sqrt(days / 365.0)
     return price, iv_annual, em
 
-# -------------------- Update + Cache -----------------------
+# ---------- Update + Cache ----------
 def update_symbol_data(symbol):
     rows = fetch_all(symbol)
     expiries = list_future_expiries(rows)
@@ -185,11 +174,7 @@ def update_symbol_data(symbol):
         "symbol": symbol,
         "duplicate": use_monthly_for_weekly,
         "em": {"price": em_price, "iv_annual": em_iv, "weekly_em": em_value, "expiry": active_weekly},
-        "gamma_zones": {
-            "spot": spot,      # (strike, gamma)
-            "above": above,    # [(strike, gamma), ...]
-            "below": below     # [(strike, gamma), ...]
-        },
+        "gamma_zones": {"spot": spot, "above": above, "below": below},
         "timestamp": time.time()
     }
 
@@ -201,7 +186,7 @@ def get_symbol_data(symbol):
     if data: CACHE[symbol] = data
     return data
 
-# ---------------------- /all/pine --------------------------
+# ---------- /all/pine ----------
 @app.route("/all/pine")
 def all_pine():
     if not POLY_KEY: return _err("Missing POLYGON_API_KEY", 401)
@@ -215,13 +200,13 @@ def all_pine():
         if not data: continue
 
         gz      = data.get("gamma_zones", {})
-        spot    = gz.get("spot")   # (strike, gamma)
+        spot    = gz.get("spot")
         above_s = strikes_only(gz.get("above"))
         below_s = strikes_only(gz.get("below"))
 
         spot_txt  = "na" if not spot else f"{float(spot[0]):.6f}"
-        above_txt = ",".join(f"{float(v):.6f}" for v in above_s) if above_s else ""
-        below_txt = ",".join(f"{float(v):.6f}" for v in below_s) if below_s else ""
+        above_txt = ",".join(f"{float(v):.6f}" for v in above_s)
+        below_txt = ",".join(f"{float(v):.6f}" for v in below_s)
 
         dup_str = "true" if data.get("duplicate") else "false"
         em_val  = data.get("em", {}).get("weekly_em")
@@ -230,6 +215,14 @@ def all_pine():
         em_txt  = "na" if em_val is None else f"{float(em_val):.6f}"
         iv_txt  = "na" if em_iv  is None else f"{float(em_iv):.6f}"
         pr_txt  = "na" if em_prc is None else f"{float(em_prc):.6f}"
+
+        # ⬇️ نولّد أسطر المصفوفات بدون استدعاء array.from() الفارغ
+        above_lines = "aboveG := array.new_float()\n"
+        if above_txt.strip():
+            above_lines += f"    aboveG := array.from({above_txt})\n"
+        below_lines = "belowG := array.new_float()\n"
+        if below_txt.strip():
+            below_lines += f"    belowG := array.from({below_txt})\n"
 
         block = f"""
 //========= {sym} =========
@@ -270,16 +263,9 @@ if syminfo.ticker == "{sym}"
         emTopL := label.new(bar_index, up, "📈 أعلى مدى متوقع: " + str.tostring(up, "#.##"), style=label.style_label_down, color=color.new(gold, 0), textcolor=color.black, size=size.small)
         emBotL := label.new(bar_index, dn, "📉 أدنى مدى متوقع: " + str.tostring(dn, "#.##"), style=label.style_label_up,   color=color.new(gold, 0), textcolor=color.black, size=size.small)
 
-    // --- Gamma Zones (clean then draw) ---
-    // reuse globals: spotG/aboveG/belowG, gLines/gLabels declared in header
+    // --- Gamma Zones (no empty array.from) ---
     spotG  := {spot_txt}
-    aboveG := array.new_float()
-    if "{above_txt}" != ""
-        aboveG := array.from({above_txt})
-    belowG := array.new_float()
-    if "{below_txt}" != ""
-        belowG := array.from({below_txt})
-
+    {above_lines}    {below_lines}
     // clear previous visuals for this symbol
     for i = 0 to array.size(gLines)-1
         line.delete(array.get(gLines, i))
@@ -315,7 +301,7 @@ if syminfo.ticker == "{sym}"
 
     pine = f"""//@version=5
 // Last Update (Riyadh): {last_update}
-indicator("GEX PRO  (v6.0)", overlay=true, max_lines_count=500, max_labels_count=500, dynamic_requests=true)
+indicator("GEX PRO  (v6.1)", overlay=true, max_lines_count=500, max_labels_count=500, dynamic_requests=true)
 
 // ==== Global (single declaration, reused per symbol) ====
 var float    spotG   = na
@@ -329,7 +315,7 @@ var label[]  gLabels = array.new_label()
 """
     return Response(pine, mimetype="text/plain")
 
-# ---------------------- /all/json --------------------------
+# ---------- /all/json ----------
 @app.route("/all/json")
 def all_json():
     if not POLY_KEY:
@@ -341,18 +327,14 @@ def all_json():
             gz = d.get("gamma_zones") or {}
             all_data[sym] = {
                 "em": d.get("em"),
-                "gamma_zones": {
-                    "spot": gz.get("spot"),
-                    "above": gz.get("above"),
-                    "below": gz.get("below"),
-                },
+                "gamma_zones": {"spot": gz.get("spot"), "above": gz.get("above"), "below": gz.get("below")},
                 "timestamp": d["timestamp"]
             }
     return jsonify({"status": "OK", "symbols": SYMBOLS,
                     "updated": dt.datetime.utcnow().isoformat()+"Z",
                     "data": all_data})
 
-# ---------------------- /em/json ---------------------------
+# ---------- /em/json ----------
 @app.route("/em/json")
 def em_json():
     if not POLY_KEY:
@@ -364,16 +346,15 @@ def em_json():
             out[sym] = d["em"]
     return jsonify({"status": "OK", "updated": dt.datetime.utcnow().isoformat()+"Z", "data": out})
 
-# ------------------------ Root -----------------------------
+# ---------- Root ----------
 @app.route("/")
 def home():
     return jsonify({
         "status": "OK ✅",
-        "message": "Bassam GEX PRO v6.0 server is running",
+        "message": "Bassam GEX PRO v6.1 server is running",
         "note": "Gamma Zones + EM only; cache warms in background."
     })
 
-# ------------------------ Background Loader ----------------
 def warmup_cache():
     print("🔄 Warming up cache in background...")
     for sym in SYMBOLS:
