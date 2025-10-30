@@ -1,6 +1,3 @@
-هذا الكود صحيح ؟
-
-
 # ============================================================
 # Bassam GEX PRO v4.9 – Adaptive Colors + No-Dup + Live Center (1h)
 # - Weekly EM lines centered at current price (1h)
