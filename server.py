@@ -360,10 +360,8 @@ if syminfo.ticker == "{sym}"
             label.delete(emTopL)
         if not na(emBotL)
             label.delete(emBotL)
-        emTopL := label.new(bar_index, up, "📈 أعلى مدى متوقع: " + str.tostring(up, "#.##"),
-            style = label.style_label_down, color = color.new(gold, 0), textcolor = color.black, size = size.small)
-        emBotL := label.new(bar_index, dn, "📉 أدنى مدى متوقع: " + str.tostring(dn, "#.##"),
-            style = label.style_label_up, color = color.new(gold, 0), textcolor = color.black, size = size.small)
+        emTopL := label.new(bar_index, up, "📈 أعلى مدى متوقع: " + str.tostring(up, "#.##"),style = label.style_label_down, color = color.new(gold, 0), textcolor = color.black, size = size.small)
+        emBotL := label.new(bar_index, dn, "📉 أدنى مدى متوقع: " + str.tostring(dn, "#.##"),style = label.style_label_up, color = color.new(gold, 0), textcolor = color.black, size = size.small)
 
     // === Gamma Zones ===
 var float spotG = {spot_txt}
@@ -437,11 +435,7 @@ draw_side(_s, _p, _iv, _col) =>
             bar_col = color.new(_col, alpha)
             line.new(bar_index + 3, y, bar_index + bar_len - 3, y, color=bar_col, width=6)
             txt = "Well " + str.tostring(p*100, "#.##") + "% | IV " + str.tostring(iv*100, "#.##") + "%"
-            label.new(bar_index + bar_len + 2, y, txt,
-                style = label.style_label_left,
-                color = color.new(color.rgb(220, 220, 220), 0),
-                textcolor = color.black,
-                size = size.small)
+            label.new(bar_index + bar_len + 2, y, txt,style = label.style_label_left,color = color.new(color.rgb(220, 220, 220), 0),textcolor = color.black,size = size.small)
 
 // --- Per-symbol blocks ---
 {''.join(blocks)}
