@@ -106,13 +106,21 @@ def analyze_oi_iv(rows, expiry, per_side_limit, split_by_price=True):
         det = r.get("details", {})
         strike = det.get("strike_price")
         ctype  = det.get("contract_type")
-        oi     = r.get("open_interest")
-        iv     = r.get("implied_volatility")
-        if not (isinstance(strike, (int, float)) and isinstance(oi, (int, float))):
+        # نحسب Gamma Exposure بدلاً من OI
+        gamma = r.get("gamma_exposure")
+        iv    = r.get("implied_volatility")
+
+        if not (isinstance(strike, (int, float)) and isinstance(gamma, (int, float))):
             continue
-        iv = float(iv) if isinstance(iv, (int,float)) else 0.0
-        if ctype == "call": calls.append((strike, oi, iv))
-        elif ctype == "put": puts.append((strike, oi, iv))
+
+        iv = float(iv) if isinstance(iv, (int, float)) else 0.0
+
+        # نحفظها في القائمة حسب نوع العقد
+        if ctype == "call":
+            calls.append((strike, gamma, iv))
+        elif ctype == "put":
+            puts.append((strike, gamma, iv))
+
 
     if split_by_price and isinstance(price, (int, float)):
         calls = [(s, oi, iv) for (s, oi, iv) in calls if s >= price]
@@ -125,10 +133,11 @@ def analyze_oi_iv(rows, expiry, per_side_limit, split_by_price=True):
 # -------------------- Pine normalization -------------------
 def normalize_for_pine(data):
     if not data: return [], [], []
-    base = max(oi for _, oi, _ in data) or 1.0
+    base = max(abs(g) for _, g, _ in data) or 1.0
     strikes = [round(float(s), 2) for (s, _, _) in data]
-    pcts    = [round((oi / base), 4) for (_, oi, _) in data]
+    pcts    = [round((g / base), 4) for (_, g, _) in data]
     ivs     = [round(float(iv), 4) for (_, _, iv) in data]
+
     return strikes, pcts, ivs
 
 def to_pine_array(arr):
@@ -342,7 +351,7 @@ draw_side(_s, _p, _iv, _col) =>
             bar_col = color.new(_col, alpha)
             bar_len = int(math.max(10, p * 100))
             line.new(bar_index + 3, y, bar_index + bar_len - 12, y, color=bar_col, width=6)
-            label.new(bar_index + bar_len + 2, y, str.tostring(p*100, "#.##") + "% | IV " + str.tostring(iv*100, "#.##") + "%", style=label.style_none, textcolor=color.white, size=size.small)
+            label.new(bar_index + bar_len + 2, y,"Well " + str.tostring(p*100, "#.##") + "% | IV " + str.tostring(iv*100, "#.##") + "%",style=label.style_none, textcolor=color.white, size=size.small)
 
 
 // --- Per-symbol blocks ---
