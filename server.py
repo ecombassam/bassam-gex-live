@@ -238,19 +238,12 @@ def all_pine():
         block = f"""
 //========= {sym} =========
 if syminfo.ticker == "{sym}"
-    title = " PRO • " + mode + " | {sym}"
+    title = " PRO "
     duplicate_expiry = {dup_str}
 
     showWeekly := false
     showMonthly := false
 
-    if mode == "Weekly"
-        if duplicate_expiry
-            showMonthly := true
-        else
-            showWeekly  := true
-    else
-        showMonthly := true
 
     // === Option bars: per-symbol, no-dup ===
 
@@ -312,10 +305,9 @@ if syminfo.ticker == "{sym}"
 
     pine = f"""//@version=5
 // Last Update (Riyadh): {last_update}
-indicator("GEX PRO + Weekly EM (v4.9)", overlay=true, max_lines_count=500, max_labels_count=500, dynamic_requests=true)
+indicator("GEX PRO  (v4.9)", overlay=true, max_lines_count=500, max_labels_count=500, dynamic_requests=true)
 
 // إعدادات عامة
-mode = input.string("Weekly", "Expiry Mode", options=["Weekly","Monthly"])
 showHVL   = input.bool(true, "Show HVL", inline="hvl")
 baseColor = color.new(color.yellow, 0)
 zoneWidth = 2.0
