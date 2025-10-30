@@ -267,12 +267,16 @@ if syminfo.ticker == "{sym}"
     spotG  := {spot_txt}
     {above_lines}    {below_lines}
     // clear previous visuals for this symbol
-    for i = 0 to array.size(gLines)-1
+    if array.size(gLines) > 0
+        for i = 0 to array.size(gLines) - 1
         line.delete(array.get(gLines, i))
     array.clear(gLines)
-    for i = 0 to array.size(gLabels)-1
-        label.delete(array.get(gLabels, i))
-    array.clear(gLabels)
+
+    if array.size(gLabels) > 0
+        for i = 0 to array.size(gLabels) - 1
+            label.delete(array.get(gLabels, i))
+        array.clear(gLabels)
+
 
     if not na(spotG)
         _l = line.new(bar_index-3, spotG, bar_index+3, spotG, color=color.new(color.yellow, 0), width=3)
