@@ -366,15 +366,28 @@ clear_visuals(_optLines, _optLabels) =>
 // دالة رسم الأشرطة الخاصة بالأوبشن (ترسم مرة واحدة فقط عند أول تشغيل)
 draw_side(_s, _p, _iv, _col) =>
     if barstate.islast and array.size(_s) > 0 and array.size(_p) > 0 and array.size(_iv) > 0
+        // 🔹 نحدد أطول عمود (القيمة 1.0 = 100%) ونجعل طوله 50 شمعة
+        var float maxLen = 50.0
+        var float maxP = array.max(_p)
+        if maxP == 0
+            maxP := 1.0
+
         for i = 0 to array.size(_s) - 1
             y  = array.get(_s, i)
             p  = array.get(_p, i)
             iv = array.get(_iv, i)
+
+            // 🔹 نحسب الطول النسبي بناءً على أقوى عمود
+            bar_len = int(maxLen * (p / maxP))
             alpha   = 90 - int(p * 70)
             bar_col = color.new(_col, alpha)
-            bar_len = int(math.max(10, p * 100))
-            line.new(bar_index + 3, y, bar_index + bar_len - 12, y, color=bar_col, width=6)
-            label.new(bar_index + bar_len + 2, y,"Well " + str.tostring(p*100, "#.##") + "% | IV " + str.tostring(iv*100, "#.##") + "%",style=label.style_none, textcolor=color.white, size=size.small)
+
+            line.new(bar_index + 3, y, bar_index + bar_len - 3, y, color=bar_col, width=6)
+            // 🎨 ليبل بخلفية رمادية فاتحة ونص أسود واضح
+            txt = "Well " + str.tostring(p*100, "#.##") + "% | IV " + str.tostring(iv*100, "#.##") + "%"
+            label.new(bar_index + bar_len + 2, y, txt,style = label.style_label_left,color = color.new(color.rgb(220, 220, 220), 0),textcolor = color.black,size = size.small)
+
+
 
 
 // --- Per-symbol blocks ---
