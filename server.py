@@ -339,10 +339,6 @@ zoneWidth = 2.0
 var bool showWeekly  = false
 var bool showMonthly = false
 
-// مصفوفات للرسم العام
-var line[]  optLines  = array.new_line()
-var label[] optLabels = array.new_label()
-
 // دالة تنظيف جميع الرسومات القديمة (تعريف واحد فقط في الأعلى)
 clear_visuals(_optLines, _optLabels) =>
     if array.size(_optLines) > 0
