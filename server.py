@@ -274,8 +274,9 @@ if syminfo.ticker == "{sym}"
 
     if array.size(gLabels) > 0
         for i = 0 to array.size(gLabels) - 1
-            label.delete(array.get(gLabels, i))
-        array.clear(gLabels)
+        label.delete(array.get(gLabels, i))
+    array.clear(gLabels)
+
 
 
     if not na(spotG)
