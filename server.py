@@ -126,6 +126,16 @@ def analyze_oi_iv(rows, expiry, per_side_limit, split_by_price=True):
             calls.append((strike, gamma, iv))
         elif ctype == "put":
             puts.append((strike, gamma, iv))
+        # 🔹 توحيد المقياس بحيث يكون أقوى Gamma من الجانبين (Call و Put) = 1.0 = 100%
+        all_gammas = [abs(g) for (_, g, _) in calls + puts if isinstance(g, (int, float))]
+        global_max_gamma = max(all_gammas) if all_gammas else 1.0
+
+        # نعيد حساب كل Gamma كنسبة من الأعلى
+        def normalize_side(side):
+            return [(s, (g / global_max_gamma), iv) for (s, g, iv) in side]
+
+        calls = normalize_side(calls)
+        puts  = normalize_side(puts)
 
 
     if split_by_price and isinstance(price, (int, float)):
@@ -258,8 +268,8 @@ if syminfo.ticker == "{sym}"
     title = " PRO "
     duplicate_expiry = {dup_str}
 
-    showWeekly := false
-    showMonthly := false
+    showWeekly := true
+    showMonthly := true
 
 
     // === Option bars: per-symbol, no-dup ===
