@@ -1,9 +1,5 @@
 # ============================================================
-# Bassam GEX PRO v6.3 – Gamma Zones Bars + Unified 100% Scale
-# - Weekly EM centered at current price (1h)
-# - Gamma Zones as BAR blocks (spot + 3 above + 3 below)
-# - Unified Gamma normalization (strongest = 100%)
-# - Full JSON/Pine integration
+# Bassam GEX PRO v6.1 – Stable Edition + Gamma Zones Bars Patch
 # ============================================================
 
 import os, json, datetime as dt, requests, time, math
@@ -22,7 +18,8 @@ SYMBOLS = [
 CACHE = {}
 CACHE_EXPIRY = 3600  # 1h
 
-# ---------------------- Common helpers ----------------------
+
+# -------------------- Common Helpers --------------------
 def _err(msg, http=502, data=None, sym=None):
     body = {"error": msg}
     if data is not None: body["data"] = data
@@ -40,11 +37,12 @@ def _get(url, params=None):
     except Exception:
         return r.status_code, {"error": "Invalid JSON"}
 
-# ---------------------- Polygon fetch -----------------------
+
+# -------------------- Polygon Data --------------------
 def fetch_all(symbol):
     url = f"{BASE_SNAP}/{symbol.upper()}"
     cursor, all_rows = None, []
-    for _ in range(10):
+    for _ in range(8):
         params = {"limit": 50}
         if cursor: params["cursor"] = cursor
         status, j = _get(url, params)
@@ -59,11 +57,11 @@ def fetch_all(symbol):
             cursor = None
     return all_rows
 
-# -------------------- Gamma extraction ----------------------
+
+# -------------------- Gamma Extraction --------------------
 def _gamma_from_row(r):
     g = r.get("gamma_exposure")
-    if isinstance(g, (int, float)):
-        return float(g)
+    if isinstance(g, (int, float)): return float(g)
     greeks = r.get("greeks", {})
     gamma_val = greeks.get("gamma", 0)
     oi_val = r.get("open_interest", 0)
@@ -72,31 +70,40 @@ def _gamma_from_row(r):
     except Exception:
         return 0.0
 
-# -------------------- Gamma Zones logic ---------------------
+
+# -------------------- Gamma Zones Bars --------------------
 def gamma_zones(rows, price, expiry):
-    """Return spot, top 3 above, top 3 below (strike, gamma)."""
-    if not expiry or not price:
-        return None, [], []
+    """Extract Spot Gamma + Top3 Above + Top3 Below"""
     rows = [r for r in rows if r.get("details", {}).get("expiration_date") == expiry]
+    if not rows or not price: return None, [], []
     gdata = []
     for r in rows:
         strike = r.get("details", {}).get("strike_price")
         gamma  = _gamma_from_row(r)
         if isinstance(strike, (int,float)) and isinstance(gamma, (int,float)):
             gdata.append((float(strike), gamma))
-    if not gdata:
-        return None, [], []
 
-    # الأقرب للسعر الحالي (spot)
+    if not gdata: return None, [], []
+
+    # أقرب سترايك للسعر الحالي = spot Γ
     spot = min(gdata, key=lambda x: abs(x[0]-price))
 
-    # الأعلى / الأدنى
+    # أعلى 3 فوق السعر وأعلى 3 تحت السعر
     above = sorted([x for x in gdata if x[0] > price], key=lambda x: abs(x[1]), reverse=True)[:3]
     below = sorted([x for x in gdata if x[0] < price], key=lambda x: abs(x[1]), reverse=True)[:3]
 
     return spot, above, below
 
-# -------------------- OI + IV + Gamma -----------------------
+
+# -------------------- Normalize Gamma --------------------
+def normalize_side(side):
+    if not side: return []
+    max_gamma = max(abs(g) for (_, g, _) in side)
+    if max_gamma == 0: max_gamma = 1
+    return [(s, g / max_gamma, iv) for (s, g, iv) in side]
+
+
+# -------------------- Analyze Gamma Data --------------------
 def analyze_oi_iv(rows, expiry, limit):
     rows = [r for r in rows if r.get("details", {}).get("expiration_date") == expiry]
     if not rows: return None, [], []
@@ -115,19 +122,18 @@ def analyze_oi_iv(rows, expiry, limit):
         gamma  = _gamma_from_row(r)
         iv     = r.get("implied_volatility", 0)
         if not isinstance(strike, (int,float)): continue
-        if ctype == "call":
-            calls.append((strike, gamma, iv))
-        elif ctype == "put":
-            puts.append((strike, gamma, iv))
+        if ctype == "call": calls.append((strike, gamma, iv))
+        elif ctype == "put": puts.append((strike, gamma, iv))
 
-    all_g = [abs(g) for (_,g,_) in (calls+puts)]
+    all_g = [abs(g) for (_, g, _) in (calls+puts)]
     global_max = max(all_g) if all_g else 1
     if global_max == 0: global_max = 1
 
     def normalize(side): return [(s, g/global_max, iv) for (s,g,iv) in side]
     return price, normalize(calls)[:limit], normalize(puts)[:limit]
 
-# -------------------- EM Calculation ------------------------
+
+# -------------------- EM Calculation --------------------
 def compute_weekly_em(rows, expiry):
     if not expiry: return None, None, None
     wk = [r for r in rows if r.get("details", {}).get("expiration_date")==expiry]
@@ -141,7 +147,8 @@ def compute_weekly_em(rows, expiry):
     em = price * (iv_annual or 0) * math.sqrt(days/365)
     return price, iv_annual, em
 
-# -------------------- Update + Cache ------------------------
+
+# -------------------- Main Data Build --------------------
 def update_symbol_data(sym):
     rows = fetch_all(sym)
     expiries = sorted({r.get("details",{}).get("expiration_date") for r in rows if r.get("details",{}).get("expiration_date")})
@@ -158,6 +165,8 @@ def update_symbol_data(sym):
         "timestamp": time.time()
     }
 
+
+# -------------------- Cache --------------------
 def get_data(sym):
     now=time.time()
     if sym in CACHE and now-CACHE[sym]["timestamp"]<CACHE_EXPIRY:
@@ -166,17 +175,8 @@ def get_data(sym):
     if d: CACHE[sym]=d
     return d
 
-# ---------------------- /all/json ---------------------------
-@app.route("/all/json")
-def all_json():
-    if not POLY_KEY: return _err("Missing POLYGON_API_KEY",401)
-    data={}
-    for s in SYMBOLS:
-        d=get_data(s)
-        if d: data[s]=d
-    return jsonify({"status":"OK","symbols":SYMBOLS,"updated":dt.datetime.utcnow().isoformat()+"Z","data":data})
 
-# ---------------------- /all/pine ---------------------------
+# -------------------- /all/pine (with Gamma Bars) --------------------
 @app.route("/all/pine")
 def all_pine():
     out=[]
@@ -214,10 +214,11 @@ if syminfo.ticker == "{s}"
 """
         out.append(block)
     pine=f"""//@version=5
-indicator("Bassam GEX PRO v6.3", overlay=true, max_lines_count=500, max_labels_count=500)
+indicator("Bassam GEX PRO v6.1 – Gamma Bars Patch", overlay=true, max_lines_count=500, max_labels_count=500)
 {''.join(out)}"""
     return Response(pine, mimetype="text/plain")
 
-# ------------------------ Run -------------------------------
+
+# -------------------- Run --------------------
 if __name__=="__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT",10000)))
