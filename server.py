@@ -443,24 +443,6 @@ if syminfo.ticker == "{sym}"
 
         emTopL := label.new(bar_index, up, "📈 أعلى مدى متوقع: " + str.tostring(up, "#.##"),style=label.style_label_down, color=color.new(gold, 0), textcolor=color.black, size=size.small)
         emBotL := label.new(bar_index, dn, "📉 أدنى مدى متوقع: " + str.tostring(dn, "#.##"),style=label.style_label_up,   color=color.new(gold, 0), textcolor=color.black, size=size.small)
-    
-    
-    // === Next Earnings Date (bottom-right corner) ===
-    nextE = request.earnings(syminfo.tickerid)
-    nextDate = na(nextE) ? na : nextE.earnings_release_next
-
-    if barstate.islast and not na(nextDate)
-        tstr = str.format_time(nextDate, "yyyy-MM-dd")
-        msg  = "🟡 أقرب إعلان أرباح: " + tstr
-
-        // حذف أي ليبل سابق لتجنب التكرار
-        var label earningsLabel = na
-        if not na(earningsLabel)
-            label.delete(earningsLabel)
-
-        // إنشاء ليبل جديد أسفل يمين الشاشة
-        earningsLabel := label.new(bar_index + 1, low, msg,style = label.style_label_right,xloc = xloc.bar_index,yloc = yloc.bottom,textcolor = color.black,color = color.new(color.yellow, 0),size = size.normal)
-
 
 
 
