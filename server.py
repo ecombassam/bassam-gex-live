@@ -1,8 +1,8 @@
 # ============================================================
-# Bassam GEX PRO v4.9 – Adaptive Colors + No-Dup + Live Center (1h)
+# Bassam GEX PRO v5.0 – Net Gamma Exposure Edition (1h)
 # - Weekly EM lines centered at current price (1h)
 # - No duplication of lines/labels
-# - Option bars managed per-symbol (cleared each refresh)
+# - Option bars now use Net Gamma Exposure instead of OI
 # - Colors readable on both dark/light chart backgrounds
 # ============================================================
 
@@ -10,7 +10,7 @@ import os, json, datetime as dt, requests, time, math
 from flask import Flask, jsonify, Response
 
 app = Flask(__name__)
-POLY_KEY  = (os.environ.get("POLYGON_API_KEY") or "").strip()
+POLY_KEY  = (os.environ.get("VVn7upcnEAu9o6wdok91K_dhUcqm9YgN") or "").strip()
 BASE_SNAP = "https://api.polygon.io/v3/snapshot/options"
 TODAY     = dt.date.today
 
@@ -90,44 +90,91 @@ def nearest_monthly(expiries):
             last_friday = d
     return last_friday or (month_list[-1] if month_list else expiries[-1])
 
-# -------------------- OI + IV analysis ---------------------
-def analyze_oi_iv(rows, expiry, per_side_limit, split_by_price=True):
+# ----------------- Net Gamma + IV analysis -----------------
+def analyze_gamma_iv(rows, expiry, per_side_limit, split_by_price=True):
+    """
+    تُرجع:
+      price: سعر الأصل الأساسي
+      top_calls:  [(strike, net_gamma_signed, iv), ...]  (أعلى |net_gamma|)
+      top_puts:   [(strike, net_gamma_signed, iv), ...]  (أعلى |net_gamma|)
+    """
     rows = [r for r in rows if r.get("details", {}).get("expiration_date") == expiry]
     if not rows: return None, [], []
     price = None
     for r in rows:
         p = r.get("underlying_asset", {}).get("price")
         if isinstance(p, (int, float)) and p > 0:
-            price = p
+            price = float(p)
             break
 
-    calls, puts = [], []
+    # تجميع حسب السترايك لكل نوع (calls/puts): مجموع net_gamma عند نفس السترايك
+    calls_map = {}
+    puts_map  = {}
+
     for r in rows:
-        det = r.get("details", {})
+        det    = r.get("details", {}) or {}
         strike = det.get("strike_price")
         ctype  = det.get("contract_type")
         oi     = r.get("open_interest")
         iv     = r.get("implied_volatility")
-        if not (isinstance(strike, (int, float)) and isinstance(oi, (int, float))):
+        greeks = r.get("greeks") or {}
+
+        if not (isinstance(strike, (int, float)) and isinstance(oi, (int, float)) and isinstance(price, (int, float))):
             continue
-        iv = float(iv) if isinstance(iv, (int,float)) else 0.0
-        if ctype == "call": calls.append((strike, oi, iv))
-        elif ctype == "put": puts.append((strike, oi, iv))
 
+        gamma = greeks.get("gamma", 0.0)
+        try:
+            gamma = float(gamma)
+        except Exception:
+            gamma = 0.0
+
+        iv_val = float(iv) if isinstance(iv, (int, float)) else 0.0
+
+        # net gamma exposure الموقعة
+        # call/put لا نعكس الإشارة يدويًا؛ نستخدم جاما كما هي من الـ greeks (غالبًا موجبة)
+        # الإشارة الموقعة مفيدة في JSON، بينما الرسم يُطبّع على القيمة المطلقة.
+        net_gamma = gamma * float(oi) * 100.0 * float(price)
+
+        if ctype == "call":
+            if strike not in calls_map:
+                calls_map[strike] = {"net_gamma": 0.0, "iv": iv_val}
+            calls_map[strike]["net_gamma"] += net_gamma
+            # حدّث IV الأقرب (نأخذ متوسط بسيط)
+            calls_map[strike]["iv"] = (calls_map[strike]["iv"] + iv_val) / 2.0 if calls_map[strike]["iv"] else iv_val
+
+        elif ctype == "put":
+            if strike not in puts_map:
+                puts_map[strike] = {"net_gamma": 0.0, "iv": iv_val}
+            puts_map[strike]["net_gamma"] += net_gamma
+            puts_map[strike]["iv"] = (puts_map[strike]["iv"] + iv_val) / 2.0 if puts_map[strike]["iv"] else iv_val
+
+    # تحويل إلى قوائم
+    calls = [(float(s), float(v["net_gamma"]), float(v["iv"])) for s, v in calls_map.items()]
+    puts  = [(float(s), float(v["net_gamma"]), float(v["iv"])) for s, v in puts_map.items()]
+
+    # فلترة بناءً على السعر (مثل السابق)
     if split_by_price and isinstance(price, (int, float)):
-        calls = [(s, oi, iv) for (s, oi, iv) in calls if s >= price]
-        puts  = [(s, oi, iv) for (s, oi, iv) in puts if s <= price]
+        calls = [(s, g, iv) for (s, g, iv) in calls if s >= price]
+        puts  = [(s, g, iv) for (s, g, iv) in puts  if s <= price]
 
-    top_calls = sorted(calls, key=lambda x: x[1], reverse=True)[:per_side_limit]
-    top_puts  = sorted(puts,  key=lambda x: x[1], reverse=True)[:per_side_limit]
-    return price, top_calls, top_puts
+    # فرز بأكبر |net_gamma|
+    calls = sorted(calls, key=lambda x: abs(x[1]), reverse=True)[:per_side_limit]
+    puts  = sorted(puts,  key=lambda x: abs(x[1]), reverse=True)[:per_side_limit]
+    return price, calls, puts
 
 # -------------------- Pine normalization -------------------
 def normalize_for_pine(data):
+    """
+    data: [(strike, net_gamma_signed, iv), ...]
+    تُرجع:
+      strikes: [floats]
+      pcts:    [0..1] (normalize by max(|net_gamma|))
+      ivs:     [floats]
+    """
     if not data: return [], [], []
-    base = max(oi for _, oi, _ in data) or 1.0
+    base = max(abs(val) for _, val, _ in data) or 1.0
     strikes = [round(float(s), 2) for (s, _, _) in data]
-    pcts    = [round((oi / base), 4) for (_, oi, _) in data]
+    pcts    = [round((abs(val) / base), 4) for (_, val, _) in data]  # التطبيع على القيمة المطلقة للرسم
     ivs     = [round(float(iv), 4) for (_, _, iv) in data]
     return strikes, pcts, ivs
 
@@ -188,10 +235,10 @@ def update_symbol_data(symbol):
     use_monthly_for_weekly = (exp_w == exp_m)
 
     if use_monthly_for_weekly and exp_m:
-        _, w_calls, w_puts = analyze_oi_iv(rows, exp_m, 3)
+        _, w_calls, w_puts = analyze_gamma_iv(rows, exp_m, 3)
     else:
-        _, w_calls, w_puts = analyze_oi_iv(rows, exp_w, 3) if exp_w else (None, [], [])
-    _, m_calls, m_puts = analyze_oi_iv(rows, exp_m, 4)
+        _, w_calls, w_puts = analyze_gamma_iv(rows, exp_w, 3) if exp_w else (None, [], [])
+    _, m_calls, m_puts = analyze_gamma_iv(rows, exp_m, 4)
 
     em_price, em_iv, em_value = compute_weekly_em(rows, exp_w if not use_monthly_for_weekly else exp_m)
 
@@ -252,8 +299,7 @@ if syminfo.ticker == "{sym}"
     else
         showMonthly := true
 
-    // === Option bars: per-symbol, no-dup ===
-
+    // === Option bars: per-symbol, no-dup (Net Gamma Exposure) ===
     clear_visuals(optLines, optLabels)
     if showWeekly
         draw_side({arr_or_empty(wc_s)}, {arr_or_empty(wc_p)}, {arr_or_empty(wc_iv)}, color.lime)
@@ -267,10 +313,9 @@ if syminfo.ticker == "{sym}"
     em_iv    = {iv_txt}
     em_price = {pr_txt}
 
-    // مركز حول السعر الحالي (1h) لضمان تحديث حي حتى على فريم أسبوعي
+    // مركز حول السعر الحالي (W) لضمان تحديث حي حتى على فريم أسبوعي
     currentPrice = request.security(syminfo.tickerid, "W", close)
 
-    // خطوط مُنشأة مرة واحدة وتُحدّث بدون تكرار
     var line emTop  = line.new(na, na, na, na)
     var line emBot  = line.new(na, na, na, na)
     var label emTopL = na
@@ -280,7 +325,6 @@ if syminfo.ticker == "{sym}"
         up = currentPrice + em_value
         dn = currentPrice - em_value
 
-        // خطوط ذهبية واضحة على الوضعين
         gold = color.rgb(255, 215, 0)
 
         line.set_xy1(emTop, bar_index - 5, up)
@@ -296,14 +340,13 @@ if syminfo.ticker == "{sym}"
         line.set_style(emTop, line.style_dotted)
         line.set_style(emBot, line.style_dotted)
 
-        // ليبل بخلفية ذهبية ونص أسود (واضح على الأسود والأبيض)
         if not na(emTopL)
             label.delete(emTopL)
         if not na(emBotL)
             label.delete(emBotL)
 
-        emTopL := label.new(bar_index, up, "📈 أعلى مدى متوقع: " + str.tostring(up, "#.##"),style = label.style_label_down, color = color.new(gold, 0),textcolor = color.black, size = size.small)
-        emBotL := label.new(bar_index, dn, "📉 أدنى مدى متوقع: " + str.tostring(dn, "#.##"),style = label.style_label_up, color = color.new(gold, 0),textcolor = color.black, size = size.small)
+        emTopL := label.new(bar_index, up, "📈 أعلى مدى متوقع: " + str.tostring(up, "#.##"), style=label.style_label_down, color=color.new(gold, 0), textcolor=color.black, size=size.small)
+        emBotL := label.new(bar_index, dn, "📉 أدنى مدى متوقع: " + str.tostring(dn, "#.##"), style=label.style_label_up,   color=color.new(gold, 0), textcolor=color.black, size=size.small)
 """
         blocks.append(block)
 
@@ -312,7 +355,7 @@ if syminfo.ticker == "{sym}"
 
     pine = f"""//@version=5
 // Last Update (Riyadh): {last_update}
-indicator("GEX PRO (v4.9)", overlay=true, max_lines_count=500, max_labels_count=500, dynamic_requests=true)
+indicator("GEX PRO (v5.0) – Net Gamma Exposure", overlay=true, max_lines_count=500, max_labels_count=500, dynamic_requests=true)
 
 // إعدادات عامة
 mode = input.string("Weekly", "Expiry Mode", options=["Weekly","Monthly"])
@@ -339,18 +382,18 @@ clear_visuals(_optLines, _optLabels) =>
             label.delete(lb)
         array.clear(_optLabels)
 
-// دالة رسم الأشرطة الخاصة بالأوبشن (ترسم مرة واحدة فقط عند أول تشغيل)
+// دالة رسم الأشرطة الخاصة بالأوبشن (Net Gamma Exposure مطبّع على [0..1])
 draw_side(_s, _p, _iv, _col) =>
     if barstate.islast and array.size(_s) > 0 and array.size(_p) > 0 and array.size(_iv) > 0
         for i = 0 to array.size(_s) - 1
             y  = array.get(_s, i)
-            p  = array.get(_p, i)
+            p  = array.get(_p, i)    // هذا p = |net_gamma| / max(|net_gamma|)
             iv = array.get(_iv, i)
             alpha   = 90 - int(p * 70)
             bar_col = color.new(_col, alpha)
             bar_len = int(math.max(10, p * 50))
             line.new(bar_index + 3, y, bar_index + bar_len - 12, y, color=bar_col, width=6)
-            label.new(bar_index + bar_len + 2, y, str.tostring(p*100, "#.##") + "% | IV " + str.tostring(iv*100, "#.##") + "%", style=label.style_label_left,color=color.rgb(95, 93, 93), textcolor=color.white, size=size.small)
+            label.new(bar_index + bar_len + 2, y, str.tostring(p*100, "#.##") + "% | IV " + str.tostring(iv*100, "#.##") + "%", style=label.style_label_left, color=color.rgb(95, 93, 93), textcolor=color.white, size=size.small)
 
 
 // --- Per-symbol blocks ---
@@ -370,13 +413,13 @@ def all_json():
             all_data[sym] = {
                 "weekly": {
                     "expiry": data["weekly"].get("expiry"),
-                    "calls": [{"strike": s, "oi": oi, "iv": iv} for (s, oi, iv) in data["weekly"]["calls"]],
-                    "puts":  [{"strike": s, "oi": oi, "iv": iv} for (s, oi, iv) in data["weekly"]["puts"]],
+                    "calls": [{"strike": s, "net_gamma": ng, "iv": iv} for (s, ng, iv) in data["weekly"]["calls"]],
+                    "puts":  [{"strike": s, "net_gamma": ng, "iv": iv} for (s, ng, iv) in data["weekly"]["puts"]],
                 },
                 "monthly": {
                     "expiry": data["monthly"].get("expiry"),
-                    "calls": [{"strike": s, "oi": oi, "iv": iv} for (s, oi, iv) in data["monthly"]["calls"]],
-                    "puts":  [{"strike": s, "oi": oi, "iv": iv} for (s, oi, iv) in data["monthly"]["puts"]],
+                    "calls": [{"strike": s, "net_gamma": ng, "iv": iv} for (s, ng, iv) in data["monthly"]["calls"]],
+                    "puts":  [{"strike": s, "net_gamma": ng, "iv": iv} for (s, ng, iv) in data["monthly"]["puts"]],
                 },
                 "em": data.get("em"),
                 "timestamp": data["timestamp"]
@@ -406,10 +449,9 @@ def home():
     # استجابة سريعة جدًا لنجاح النشر
     return jsonify({
         "status": "OK ✅",
-        "message": "Bassam GEX PRO server is running",
+        "message": "Bassam GEX PRO server is running (Net Gamma Exposure)",
         "note": "Data cache loading in background..."
     })
-
 
 # ------------------------ Background Loader -----------------------------
 def warmup_cache():
@@ -422,7 +464,6 @@ def warmup_cache():
         except Exception as e:
             print(f"⚠️ Failed to cache {sym}: {e}")
     print("✅ Cache warm-up complete.")
-
 
 if __name__ == "__main__":
     import threading
