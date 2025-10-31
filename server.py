@@ -170,7 +170,7 @@ def _pick_top7_directional(calls_map, puts_map):
         all_items.append((float(s), float(v["net_gamma"]), float(v["iv"])))
 
     if not all_items:
-    return []
+        return []
 
     # احسب القيمة القصوى المطلقة
     max_abs = max(abs(x[1]) for x in all_items) or 1.0
