@@ -16,7 +16,7 @@ TODAY     = dt.date.today
 
 SYMBOLS = [
     "AAPL","META","MSFT","NVDA","TSLA","GOOGL","AMD",
-    "CRWD","SPY","PLTR","LULU","LLY","COIN","MSTR","APP","ASML","SPX"
+    "CRWD","SPY","PLTR","LULU","LLY","COIN","MSTR","APP","ASML"
 ]
 
 CACHE = {}
