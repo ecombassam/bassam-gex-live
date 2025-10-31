@@ -70,15 +70,23 @@ def list_future_expiries(rows):
     today = TODAY().isoformat()
     return [d for d in expiries if d >= today]
 
-def nearest_weekly(expiries):
+def nearest_weekly(expiries, next_week=False):
+    """إرجاع أقرب يوم جمعة (أو الجمعة التالية لو next_week=True)"""
+    fridays = []
     for d in expiries:
         try:
             y, m, dd = map(int, d.split("-"))
             if dt.date(y, m, dd).weekday() == 4:  # Friday
-                return d
+                fridays.append(d)
         except Exception:
             continue
-    return expiries[0] if expiries else None
+    fridays = sorted(fridays)
+    if not fridays:
+        return expiries[0] if expiries else None
+    if next_week and len(fridays) > 1:
+        return fridays[1]  # الجمعة القادمة
+    return fridays[0]     # الجمعة الحالية
+
 
 def nearest_monthly(expiries):
     if not expiries: return None
@@ -316,12 +324,20 @@ def compute_weekly_em(rows, weekly_expiry):
     return price, iv_annual, em
 
 # -------------------- Update + Cache -----------------------
+# -------------------- Update + Cache -----------------------
 def update_symbol_data(symbol):
     rows = fetch_all(symbol)
     expiries = list_future_expiries(rows)
-    if not expiries: return None
+    if not expiries:
+        return None
 
-    exp_w = nearest_weekly(expiries)
+    # 👇 أضف هذا الجزء هنا
+    from flask import request
+    week_mode = request.args.get("week", "Current")
+    next_week = week_mode.lower() == "next"
+    # 👆 هذا يحدد إذا نعرض الأسبوع الحالي أو القادم
+
+    exp_w = nearest_weekly(expiries, next_week=next_week)
     exp_m = nearest_monthly(expiries)
     use_monthly_for_weekly = (exp_w == exp_m)
 
@@ -450,6 +466,7 @@ indicator("GEX PRO (v5.1)", overlay=true, max_lines_count=500, max_labels_count=
 
 // إعدادات عامة
 mode = input.string("Weekly", "Expiry Mode", options=["Weekly","Monthly"])
+weekMode = input.string("Current", "Expiry Week", options=["Current","Next"])
 showHVL   = input.bool(true, "Show HVL", inline="hvl")
 zoneWidth = 2.0
 
