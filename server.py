@@ -10,7 +10,7 @@ import os, json, datetime as dt, requests, time, math
 from flask import Flask, jsonify, Response
 
 app = Flask(__name__)
-POLY_KEY  = (os.environ.get("VVn7upcnEAu9o6wdok91K_dhUcqm9YgN") or "").strip()
+POLY_KEY  = (os.environ.get("POLYGON_API_KEY") or "").strip()
 BASE_SNAP = "https://api.polygon.io/v3/snapshot/options"
 TODAY     = dt.date.today
 
