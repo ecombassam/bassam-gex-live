@@ -170,7 +170,13 @@ def _pick_top7_directional(calls_map, puts_map):
         all_items.append((float(s), float(v["net_gamma"]), float(v["iv"])))
 
     if not all_items:
-        return []
+    return []
+
+    # احسب القيمة القصوى المطلقة
+    max_abs = max(abs(x[1]) for x in all_items) or 1.0
+    # تجاهل أي عنصر أقل من 20% من الحد الأقصى
+    all_items = [x for x in all_items if abs(x[1]) >= 0.2 * max_abs]
+
 
     # فصل موجبة/سالبة
     pos = [t for t in all_items if t[1] > 0]
@@ -486,7 +492,7 @@ draw_bars(_s, _p, _iv, _sgn) =>
             bar_len = int(math.max(10, pct * 50))
 
             // الشريط
-            line.new(bar_index + 3, y, bar_index + bar_len - 12, y, color=bar_col, width=6)
+            line.new(bar_index + 3, y, bar_index + bar_len + 12, y, color=bar_col, width=6)
 
             // الليبل
             label.new(
