@@ -348,7 +348,7 @@ draw_side(_s, _p, _iv, _col) =>
             iv = array.get(_iv, i)
             alpha   = 90 - int(p * 70)
             bar_col = color.new(_col, alpha)
-            bar_len = int(math.max(10, p * 100))
+            bar_len = int(math.max(10, p * 50))
             line.new(bar_index + 3, y, bar_index + bar_len - 12, y, color=bar_col, width=6)
             label.new(bar_index + bar_len + 2, y, str.tostring(p*100, "#.##") + "% | IV " + str.tostring(iv*100, "#.##") + "%", style=label.style_none, textcolor=color.white, size=size.small)
 
