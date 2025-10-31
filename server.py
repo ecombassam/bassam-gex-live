@@ -268,7 +268,7 @@ if syminfo.ticker == "{sym}"
     em_price = {pr_txt}
 
     // مركز حول السعر الحالي (1h) لضمان تحديث حي حتى على فريم أسبوعي
-    currentPrice = request.security(syminfo.tickerid, "60", close)
+    currentPrice = request.security(syminfo.tickerid, "W", close)
 
     // خطوط مُنشأة مرة واحدة وتُحدّث بدون تكرار
     var line emTop  = line.new(na, na, na, na)
