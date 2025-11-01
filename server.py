@@ -102,6 +102,12 @@ def fetch_all(symbol):
             cursor = cursor.split("cursor=")[-1]
         else:
             cursor = None
+    # ✅ Inject mock Greeks for testing NDDE + Vanna visualization
+    for r in all_rows:
+        g = r.get("greeks")
+        if not g or g == {}:
+            r["greeks"] = {"delta": 0.45, "gamma": 0.002, "vega": 0.07}
+
     return all_rows
 
 # ------------------------ Expiries --------------------------
