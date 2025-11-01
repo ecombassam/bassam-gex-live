@@ -91,19 +91,59 @@ def fetch_all(symbol):
     cursor, all_rows = None, []
     for _ in range(10):
         params = {"limit": 50}
-        if cursor: params["cursor"] = cursor
+        if cursor:
+            params["cursor"] = cursor
         status, j = _get(url, params)
-        if status != 200 or j.get("status") != "OK": break
+        if status != 200 or j.get("status") != "OK":
+            break
+
         rows = j.get("results") or []
         all_rows.extend(rows)
         cursor = j.get("next_url")
-        if not cursor: break
+        if not cursor:
+            break
         if "cursor=" in cursor:
             cursor = cursor.split("cursor=")[-1]
         else:
             cursor = None
 
-    return all_rows
+    # ==========================================================
+    # 📊 Bias Calculation (مأخوذ من Pine Script)
+    # ==========================================================
+    # 1️⃣ استخراج قيم gamma (بعد التصفية)
+    gamma_values = []
+    for r in all_rows:
+        try:
+            g = r.get("gamma") or 0
+            if isinstance(g, (int, float)):
+                gamma_values.append(g)
+        except:
+            continue
+
+    # 2️⃣ تحليل الميل (Trend)
+    bias_result = "⚪ Neutral Bias → No Clear Edge"
+    if len(gamma_values) >= 2:
+        first_gamma = gamma_values[0]
+        last_gamma  = gamma_values[-1]
+        bias_score  = last_gamma - first_gamma
+
+        if bias_score > 0.05:
+            bias_result = "📈 Bullish Bias → Credit Put Spread ✅"
+        elif bias_score < -0.05:
+            bias_result = "📉 Bearish Bias → Credit Call Spread 🚫"
+
+        # درجة القوة
+        strength = abs(bias_score) * 100
+        bias_result += f" ({strength:.2f}%)"
+
+    # 3️⃣ إرجاع النتيجة
+    return {
+        "symbol": symbol.upper(),
+        "total_rows": len(all_rows),
+        "bias": bias_result,
+        "data": all_rows
+    }
+
 
 # ------------------------ Expiries --------------------------
 def list_future_expiries(rows):
