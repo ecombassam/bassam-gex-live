@@ -137,7 +137,9 @@ def _aggregate_gamma_by_strike(rows, price, split_by_price=True):
             gamma = 0.0
 
         iv_val = float(iv) if isinstance(iv, (int, float)) else 0.0
-        net_gamma = gamma * float(oi) * 100.0 * float(uprice)  # signed
+        sign = 1.0 if ctype == "call" else -1.0
+        net_gamma = sign * gamma * float(oi) * 100.0 * float(uprice)
+
 
         if ctype == "call":
             if strike not in calls_map:
