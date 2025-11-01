@@ -531,11 +531,11 @@ if syminfo.ticker == "{sym}"
 
     if barstate.islast
         // الصف الأول: الأسبوع الحالي
-        table.cell(sigT, 0, 0, "الاسبوع : الحالي", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=size.small)
+        table.cell(sigT, 0, 0, "الاسبوع  الحالي", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=size.small)
         table.cell(sigT, 1, 0, sig_text_curr, text_color=color.white, bgcolor=color.new(color.black, 0), text_size=size.small)
 
         // الصف الثاني: الأسبوع القادم
-        table.cell(sigT, 0, 1, "الاسبوع : القادم", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=size.small)
+        table.cell(sigT, 0, 1, "الاسبوع  القادم", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=size.small)
         table.cell(sigT, 1, 1, sig_text_next, text_color=color.white, bgcolor=color.new(color.black, 0), text_size=size.small)
 
 
