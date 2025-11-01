@@ -460,6 +460,10 @@ def all_pine():
 //========= {sym} =========
 if syminfo.ticker == "{sym}"
     title = " PRO • " + mode + " | {sym}"
+    
+    // --- إشارات السيرفر ---
+    sig_text_curr = "{sig_text_curr}"
+    sig_text_next = "{sig_text_next}"
 
     // نظّف الرسومات القديمة
     clear_visuals(optLines, optLabels)
@@ -528,12 +532,12 @@ if syminfo.ticker == "{sym}"
     if barstate.islast
         table.clear(sigT)
         // الصف الأول: الأسبوع الحالي
-        table.cell(sigT, 0, 0, "Week: Current", text_color=color.white, bgcolor=color.new(color.black, 70), text_size=size.small)
-        table.cell(sigT, 1, 0, sig_text_curr, text_color=color.white, bgcolor=color.new(color.black, 60), text_size=size.small)
+        table.cell(sigT, 0, 0, "Week: Current", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=size.small)
+        table.cell(sigT, 1, 0, sig_text_curr, text_color=color.white, bgcolor=color.new(color.black, 0), text_size=size.small)
 
         // الصف الثاني: الأسبوع القادم
-        table.cell(sigT, 0, 1, "Week: Next", text_color=color.white, bgcolor=color.new(color.black, 70), text_size=size.small)
-        table.cell(sigT, 1, 1, sig_text_next, text_color=color.white, bgcolor=color.new(color.black, 60), text_size=size.small)
+        table.cell(sigT, 0, 1, "Week: Next", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=size.small)
+        table.cell(sigT, 1, 1, sig_text_next, text_color=color.white, bgcolor=color.new(color.black, 0), text_size=size.small)
 
 
 """
