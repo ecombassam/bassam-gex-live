@@ -432,9 +432,7 @@ def update_symbol_data(symbol):
             signals[tag] = {"expiry": ex, "today": agg_today, "base": base, "signal": sig}
         else:
             signals[tag] = None
-            
-    earn_date = get_next_earnings(symbol)
-    
+
     data = {
         "symbol": symbol,
         "weekly_current": {"expiry": exp_curr, "price": wc_price, "picks": wc_picks},
@@ -447,6 +445,8 @@ def update_symbol_data(symbol):
         "signals": signals,
         "timestamp": time.time()
     }
+    earn_date = get_next_earnings(symbol)
+    data["earnings_date"] = earn_date
     return data
 
 def get_symbol_data(symbol):
@@ -680,6 +680,7 @@ def all_json():
             },
             "em": data.get("em"),
             "signals": data.get("signals"),
+            "earnings_date": data.get("earnings_date"),
             "timestamp": data["timestamp"]
         }
     return jsonify({
