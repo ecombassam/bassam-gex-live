@@ -49,6 +49,17 @@ def _get(url, params=None):
     except Exception:
         return r.status_code, {"error": "Invalid JSON"}
 
+# ---------------------- التاريخ -----------------------
+
+def get_next_earnings(symbol):
+    """يجلب أقرب تاريخ إعلان أرباح من Polygon"""
+    url = f"https://api.polygon.io/v1/meta/symbols/{symbol}/company"
+    status, j = _get(url)
+    if status != 200:
+        return None
+    info = j.get("results", {})
+    return info.get("next_earnings_date")
+    
 # ---------------------- Polygon fetch -----------------------
 def fetch_all(symbol):
     url = f"{BASE_SNAP}/{symbol.upper()}"
@@ -394,7 +405,9 @@ def update_symbol_data(symbol):
             signals[tag] = {"expiry": ex, "today": agg_today, "base": base, "signal": sig}
         else:
             signals[tag] = None
-
+            
+    earn_date = get_next_earnings(symbol)
+    
     data = {
         "symbol": symbol,
         "weekly_current": {"expiry": exp_curr, "price": wc_price, "picks": wc_picks},
