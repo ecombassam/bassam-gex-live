@@ -523,12 +523,18 @@ if syminfo.ticker == "{sym}"
         emBotL := label.new(bar_index, dn, "📉 أدنى مدى متوقع: " + str.tostring(dn, "#.##"),style=label.style_label_up,   color=color.new(gold, 0), textcolor=color.black, size=size.small)
 
     // === Credit Signal Table (ΔOI + ΔIV) ===
-    var table sigT = table.new(position.bottom_right, 1, 2)
+    var table sigT = table.new(position.bottom_right, 2, 2)  // عمودين × صفين
+
     if barstate.islast
-        table.cell(sigT, 0, 0, "Week: Current", text_color=color.white, bgcolor=color.new(color.black, 0))
-        table.cell(sigT, 0, 1, "{sig_text_curr}", text_color=color.white, bgcolor=color.new(color.black, 0))
-        table.cell(sigT, 1, 0, "Week: Next", text_color=color.white, bgcolor=color.new(color.black, 0))
-        table.cell(sigT, 1, 1, "{sig_text_next}", text_color=color.white, bgcolor=color.new(color.black, 0))
+        table.clear(sigT)
+        // الصف الأول: الأسبوع الحالي
+        table.cell(sigT, 0, 0, "Week: Current", text_color=color.white, bgcolor=color.new(color.black, 70), text_size=size.small)
+        table.cell(sigT, 1, 0, sig_text_curr, text_color=color.white, bgcolor=color.new(color.black, 60), text_size=size.small)
+
+        // الصف الثاني: الأسبوع القادم
+        table.cell(sigT, 0, 1, "Week: Next", text_color=color.white, bgcolor=color.new(color.black, 70), text_size=size.small)
+        table.cell(sigT, 1, 1, sig_text_next, text_color=color.white, bgcolor=color.new(color.black, 60), text_size=size.small)
+
 
 """
         blocks.append(block)
