@@ -103,10 +103,18 @@ def fetch_all(symbol):
         else:
             cursor = None
     # ✅ Inject mock Greeks for testing NDDE + Vanna visualization
+    # ✅ Inject dynamic mock Greeks for testing NDDE + Vanna (Directional)
     for r in all_rows:
         g = r.get("greeks")
         if not g or g == {}:
-            r["greeks"] = {"delta": 0.45, "gamma": 0.002, "vega": 0.07}
+            ctype = (r.get("details") or {}).get("contract_type", "").lower()
+            if ctype == "call":
+                r["greeks"] = {"delta": 0.45, "gamma": 0.002, "vega": 0.07}
+            elif ctype == "put":
+                r["greeks"] = {"delta": -0.45, "gamma": 0.002, "vega": 0.07}
+            else:
+                r["greeks"] = {"delta": 0.0, "gamma": 0.001, "vega": 0.05}
+
 
     return all_rows
 
