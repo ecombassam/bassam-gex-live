@@ -460,8 +460,6 @@ indicator("GEX PRO (v5.6)", overlay=true, max_lines_count=500, max_labels_count=
 // إعدادات عامة
 mode     = "Weekly"
 weekMode = input.string("Current", "Expiry Week", options=["Current","Next"])
-showHVL  = input.bool(true, "Show HVL", inline="hvl")
-zoneWidth = 2.0
 
 // مصفوفات للرسم العام
 var line[]  optLines  = array.new_line()
