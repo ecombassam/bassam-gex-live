@@ -93,8 +93,7 @@ def fetch_all(symbol):
         params = {"limit": 50}
         if cursor: params["cursor"] = cursor
         status, j = _get(url, params)
-        if status != 200 or j.get("status") !=
-        "OK":break
+        if status != 200 or j.get("status") !="OK":break
             rows = j.get("results") or []
             all_rows.extend(rows)
             cursor = j.get("next_url")
