@@ -527,7 +527,7 @@ if syminfo.ticker == "{sym}"
         emBotL := label.new(bar_index, dn, "📉 أدنى مدى متوقع: " + str.tostring(dn, "#.##"),style=label.style_label_up,   color=color.new(gold, 0), textcolor=color.black, size=size.small)
 
     // === Credit Signal Table (ΔOI + ΔIV) ===
-    var table sigT = table.new(position.bottom_right, 2, 2)  // عمودين × صفين
+    var table sigT = table.new(position.bottom_right, 2, 3)  // عمودين × صفين
 
     if barstate.islast
         // الصف الأول: الأسبوع الحالي
@@ -537,7 +537,10 @@ if syminfo.ticker == "{sym}"
         // الصف الثاني: الأسبوع القادم
         table.cell(sigT, 0, 1, "الاسبوع  القادم", text_color=color.white, bgcolor=color.new(color.black, 0), text_size=size.small)
         table.cell(sigT, 1, 1, sig_text_next, text_color=color.white, bgcolor=color.new(color.black, 0), text_size=size.small)
-
+        // الصف الثالث: تاريخ الأرباح القادم
+        earn_date = "{data.get('earnings_date') or 'N/A'}"
+        table.cell(sigT, 0, 2, "Next Earnings:", text_color=color.new(color.yellow, 0), bgcolor=color.new(color.black, 0), text_size=size.small)
+        table.cell(sigT, 1, 2, earn_date, text_color=color.new(color.yellow, 0), bgcolor=color.new(color.black, 0), text_size=size.small)
 
 """
         blocks.append(block)
