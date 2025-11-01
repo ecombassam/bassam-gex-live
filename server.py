@@ -29,9 +29,6 @@ CACHE_EXPIRY = 3600  # 1h
 DAILY_BASE = {}
 
 # ---------- Config thresholds للـ Credit Signal ----------
-TH_CALL_RATE = 0.15   # +15% تسارع Calls
-TH_PUT_RATE  = 0.15   # +15% تسارع Puts
-TH_IV_RATE   = 0.05   # +5% ارتفاع IV
 MIN_BASE_OI  = 50     # أقل OI إجمالي معقول للقياس
 
 # ---------------------- Common helpers ----------------------
@@ -261,6 +258,19 @@ def compute_weekly_em(rows, weekly_expiry):
     days = max((exp_date - TODAY()).days, 1)
     em = price * iv_annual * math.sqrt(days / 365.0)
     return price, iv_annual, em
+# -------------------- Dynamic Thresholds --------------------
+def _dynamic_thresholds(total_oi):
+    """
+    يحدد الحساسية المناسبة حسب إجمالي OI الأسبوعي.
+    """
+    if total_oi >= 500_000:
+        return 0.10, 0.10, 0.04  # مؤشرات ضخمة مثل SPY / AAPL
+    elif total_oi >= 100_000:
+        return 0.15, 0.15, 0.05  # أسهم كبرى مثل NVDA / MSFT / META
+    elif total_oi >= 30_000:
+        return 0.20, 0.20, 0.07  # متوسطة السيولة مثل PLTR / AMD / LULU
+    else:
+        return 0.25, 0.25, 0.09  # ضعيفة السيولة أو قليلة العقود
 
 # ===================== ΔOI + ΔIV SIGNALS ====================
 def _aggregate_oi_iv(rows, expiry, ref_price=None):
@@ -306,6 +316,7 @@ def _set_baseline(symbol, expiry, agg):
         "calls": float(agg["calls"] or 0.0),
         "puts":  float(agg["puts"]  or 0.0),
         "iv_atm": float(agg["iv_atm"] or 0.0)
+        
     }
 
 def _detect_credit_signal(today_agg, base_agg):
@@ -317,6 +328,10 @@ def _detect_credit_signal(today_agg, base_agg):
     base_calls = max(base_agg["calls"], 1.0)
     base_puts  = max(base_agg["puts"],  1.0)
     base_iv    = max(base_agg["iv_atm"], 1e-9)
+    total_base_oi = base_agg["calls"] + base_agg["puts"]
+
+    # ⚙️ تحديد الحساسية الديناميكية
+    TH_CALL_RATE, TH_PUT_RATE, TH_IV_RATE = _dynamic_thresholds(total_base_oi)
 
     # احترم حد أدنى للـ OI
     if (base_agg["calls"] + base_agg["puts"]) < MIN_BASE_OI:
