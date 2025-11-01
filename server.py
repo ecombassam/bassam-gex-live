@@ -52,13 +52,40 @@ def _get(url, params=None):
 # ---------------------- التاريخ -----------------------
 
 def get_next_earnings(symbol):
-    """يجلب أقرب تاريخ إعلان أرباح من Polygon"""
-    url = f"https://api.polygon.io/v1/meta/symbols/{symbol}/company"
-    status, j = _get(url)
-    if status != 200:
+    """🔹 يجلب أقرب تاريخ إعلان أرباح للسهم (باستخدام Polygon Reference API)"""
+    try:
+        # طلب بيانات الأرباح الحديثة
+        url = f"https://api.polygon.io/vX/reference/earnings?ticker={symbol}"
+        status, data = _get(url)
+        if status != 200 or "results" not in data:
+            return None
+
+        results = data.get("results", [])
+        if not results:
+            return None
+
+        # نرتب النتائج حسب التاريخ ونأخذ الأقرب للمستقبل
+        future_dates = []
+        for r in results:
+            date_str = r.get("reportDate")
+            if not date_str:
+                continue
+            try:
+                d = dt.datetime.strptime(date_str, "%Y-%m-%d").date()
+                if d >= TODAY():
+                    future_dates.append(d)
+            except:
+                continue
+
+        if not future_dates:
+            return None
+
+        next_date = min(future_dates)
+        return next_date.isoformat()
+
+    except Exception as e:
+        print(f"[WARN] get_next_earnings({symbol}): {e}")
         return None
-    info = j.get("results", {})
-    return info.get("next_earnings_date")
     
 # ---------------------- Polygon fetch -----------------------
 def fetch_all(symbol):
