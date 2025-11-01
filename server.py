@@ -10,6 +10,49 @@
 
 import os, json, datetime as dt, requests, time, math
 from flask import Flask, jsonify, Response
+# ---------------------- Smart Credit Analyzer (Vanna + NDDE) ----------------------
+
+def compute_ndde(rows):
+    """حساب Net Dealer Delta Exposure"""
+    total = 0.0
+    for r in rows:
+        greeks = r.get("greeks") or {}
+        delta = greeks.get("delta")
+        oi = r.get("open_interest")
+        if isinstance(delta, (int, float)) and isinstance(oi, (int, float)):
+            total += delta * oi * 100.0
+    return total
+
+
+def compute_vanna(rows):
+    """حساب Vanna Exposure التقريبي"""
+    total = 0.0
+    for r in rows:
+        greeks = r.get("greeks") or {}
+        delta = greeks.get("delta")
+        vega = greeks.get("vega")
+        gamma = greeks.get("gamma")
+        oi = r.get("open_interest")
+        und = r.get("underlying_asset") or {}
+        price = und.get("price", 0.0)
+        if all(isinstance(x, (int, float)) for x in [delta, vega, gamma, oi, price]):
+            # المعادلة التقريبية (قابلة للتحسين لاحقاً)
+            vanna = delta * vega * 0.01 * oi * 100.0 * price
+            total += vanna
+    return total
+
+
+def analyze_credit_bias(rows):
+    """دمج NDDE + Vanna لتحديد نوع الصفقة الأنسب"""
+    ndde = compute_ndde(rows)
+    vanna = compute_vanna(rows)
+
+    if ndde < 0 and vanna > 0:
+        return "📈 Bullish Bias → Recommended: Credit Put Spread"
+    elif ndde > 0 and vanna < 0:
+        return "📉 Bearish Bias → Recommended: Credit Call Spread"
+    else:
+        return "⚪ Neutral Bias → No Clear Edge"
 
 app = Flask(__name__)
 POLY_KEY  = (os.environ.get("POLYGON_API_KEY") or "").strip()
@@ -309,6 +352,8 @@ def update_symbol_data(symbol):
     expiries = list_future_expiries(rows)
     if not expiries:
         return None
+    # تحليل نوع الصفقة باستخدام NDDE + Vanna
+    credit_bias = analyze_credit_bias(rows)
 
     # احصل على جمعتين: الحالية والقادمة (إن وُجدت)
     exp_curr = nearest_weekly(expiries, next_week=False)
@@ -325,7 +370,8 @@ def update_symbol_data(symbol):
     # EM لكلا الأسبوعين
     em_curr_price, em_curr_iv, em_curr_value = compute_weekly_em(rows, exp_curr) if exp_curr else (None, None, None)
     em_next_price, em_next_iv, em_next_value = compute_weekly_em(rows, exp_next) if exp_next else (None, None, None)
-
+    # حفظ نتيجة تحليل الكريدت
+    bias_result = credit_bias
     return {
         "symbol": symbol,
         "weekly_current": {"expiry": exp_curr, "price": wc_price, "picks": wc_picks},
@@ -335,6 +381,7 @@ def update_symbol_data(symbol):
             "current": {"price": em_curr_price, "iv_annual": em_curr_iv, "weekly_em": em_curr_value},
             "next":    {"price": em_next_price, "iv_annual": em_next_iv, "weekly_em": em_next_value},
         },
+        "bias": bias_result,
         "timestamp": time.time()
     }
 
@@ -355,6 +402,7 @@ def all_pine():
     for sym in SYMBOLS:
         data = get_symbol_data(sym)
         if not data: continue
+        bias_text = data.get("bias", "⚪ Neutral")
 
         # Weekly CURRENT arrays
         wc_s, wc_p, wc_iv, wc_sgn = normalize_for_pine_v51(data["weekly_current"]["picks"])
@@ -443,6 +491,9 @@ if syminfo.ticker == "{sym}"
 
         emTopL := label.new(bar_index, up, "📈 أعلى مدى متوقع: " + str.tostring(up, "#.##"),style=label.style_label_down, color=color.new(gold, 0), textcolor=color.black, size=size.small)
         emBotL := label.new(bar_index, dn, "📉 أدنى مدى متوقع: " + str.tostring(dn, "#.##"),style=label.style_label_up,   color=color.new(gold, 0), textcolor=color.black, size=size.small)
+    // === Credit Strategy Suggestion ===
+    var table biasT = table.new(position.bottom_right, 1, 1)
+    table.cell(biasT, 0, 0, "{bias_text}", text_color=color.white, bgcolor=color.new(color.black, 70), text_size=size.small)
 
 
 
