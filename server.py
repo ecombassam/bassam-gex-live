@@ -1,10 +1,10 @@
 # ============================================================
-# Bassam GEX PRO v5.6 – Dual Week + Dynamic EM (Smart Selector)
+# Bassam GEX PRO v6.9 – Dual Week + Dynamic EM + Credit Signals (ΔOI + ΔIV)
 # - Weekly (Current & Next) + Monthly
+# - ΔOI/ΔIV signal per-week (Bullish Credit Put / Bearish Credit Call / Neutral)
 # - Only 7 bars per expiry: Top3 + Strongest(|100%|) + Top3
 # - Ignore <20% of max |net_gamma|
 # - Only strikes within ±25% around current price
-# - Directional colors (green/red), readable on dark/light
 # - EM lines follow the same selected week (Current/Next)
 # ============================================================
 
@@ -23,6 +23,16 @@ SYMBOLS = [
 
 CACHE = {}
 CACHE_EXPIRY = 3600  # 1h
+
+# ⏱️ Baselines (نحفظ خط أساس يومي للمقارنة Δ)
+# structure: DAILY_BASE[symbol][expiry] = {"date":"YYYY-MM-DD","calls":x,"puts":y,"iv_atm":z}
+DAILY_BASE = {}
+
+# ---------- Config thresholds للـ Credit Signal ----------
+TH_CALL_RATE = 0.15   # +15% تسارع Calls
+TH_PUT_RATE  = 0.15   # +15% تسارع Puts
+TH_IV_RATE   = 0.05   # +5% ارتفاع IV
+MIN_BASE_OI  = 50     # أقل OI إجمالي معقول للقياس
 
 # ---------------------- Common helpers ----------------------
 def _err(msg, http=502, data=None, sym=None):
@@ -48,13 +58,16 @@ def fetch_all(symbol):
     cursor, all_rows = None, []
     for _ in range(10):
         params = {"limit": 50}
-        if cursor: params["cursor"] = cursor
+        if cursor:
+            params["cursor"] = cursor
         status, j = _get(url, params)
-        if status != 200 or j.get("status") != "OK": break
+        if status != 200 or j.get("status") != "OK":
+            break
         rows = j.get("results") or []
         all_rows.extend(rows)
         cursor = j.get("next_url")
-        if not cursor: break
+        if not cursor:
+            break
         if "cursor=" in cursor:
             cursor = cursor.split("cursor=")[-1]
         else:
@@ -75,14 +88,13 @@ def list_fridays(expiries):
     for d in expiries:
         try:
             y, m, dd = map(int, d.split("-"))
-            if dt.date(y, m, dd).weekday() == 4:  # Friday
+            if dt.date(y, m, dd).weekday() == 4:
                 fr.append(d)
         except Exception:
             continue
     return sorted(fr)
 
 def nearest_weekly(expiries, next_week=False):
-    """Friday of current week if available; next_week=True → next Friday."""
     fridays = list_fridays(expiries)
     if not fridays:
         return expiries[0] if expiries else None
@@ -104,10 +116,6 @@ def nearest_monthly(expiries):
 
 # ------------- Net Gamma + IV (raw aggregation) -------------
 def _aggregate_gamma_by_strike(rows, price, split_by_price=True):
-    """
-    تُرجع قاموسين: calls_map و puts_map
-      { strike: {"net_gamma": signed_sum, "iv": avg_iv} }
-    """
     calls_map, puts_map = {}, {}
     if price is None: return calls_map, puts_map
 
@@ -130,16 +138,10 @@ def _aggregate_gamma_by_strike(rows, price, split_by_price=True):
         if split_by_price and not (low_bound <= float(strike) <= high_bound):
             continue
 
-        gamma = greeks.get("gamma", 0.0)
-        try:
-            gamma = float(gamma)
-        except Exception:
-            gamma = 0.0
-
+        gamma = float(greeks.get("gamma", 0.0) or 0.0)
         iv_val = float(iv) if isinstance(iv, (int, float)) else 0.0
         sign = 1.0 if ctype == "call" else -1.0
         net_gamma = sign * gamma * float(oi) * 100.0 * float(uprice)
-
 
         if ctype == "call":
             if strike not in calls_map:
@@ -155,96 +157,60 @@ def _aggregate_gamma_by_strike(rows, price, split_by_price=True):
             puts_map[strike]["iv"] = (puts_map[strike]["iv"] * puts_map[strike]["count"] + iv_val) / (puts_map[strike]["count"] + 1)
             puts_map[strike]["count"] += 1
 
-    # نظّف حقول count
     for d in (calls_map, puts_map):
         for k in list(d.keys()):
             v = d[k]
             d[k] = {"net_gamma": float(v["net_gamma"]), "iv": float(v["iv"])}
-
     return calls_map, puts_map
 
 def _pick_top7_directional(calls_map, puts_map):
-    """
-    ترجع حتى 7 عناصر موحدة [(strike, net_gamma_signed, iv)]:
-      - Top 3 موجبة
-      - أقوى قيمة مطلقة (100%)
-      - Top 3 سالبة
-      - تجاهل أي عنصر < 20% من أقصى |net_gamma|
-      - ترتيب نهائي بحسب السعر
-    """
     all_items = []
     for s, v in calls_map.items():
         all_items.append((float(s), float(v["net_gamma"]), float(v["iv"])))
     for s, v in puts_map.items():
         all_items.append((float(s), float(v["net_gamma"]), float(v["iv"])))
-
-    if not all_items:
-        return []
-
+    if not all_items: return []
     max_abs = max(abs(x[1]) for x in all_items) or 1.0
-    all_items = [x for x in all_items if abs(x[1]) >= 0.2 * max_abs]  # تجاهل <20%
-
+    all_items = [x for x in all_items if abs(x[1]) >= 0.2 * max_abs]
     pos = [t for t in all_items if t[1] > 0]
     neg = [t for t in all_items if t[1] < 0]
-
     pos_sorted = sorted(pos, key=lambda x: x[1], reverse=True)
-    neg_sorted = sorted(neg, key=lambda x: x[1])  # الأكثر سلبًا أولاً
-
+    neg_sorted = sorted(neg, key=lambda x: x[1])
     top_pos = pos_sorted[:3]
     top_neg = neg_sorted[:3]
     strongest = max(all_items, key=lambda x: abs(x[1]))
-
     sel, seen = [], set()
     def _add_unique(items):
         for (s, g, iv) in items:
             key = (round(s, 6), round(g, 6))
             if key not in seen:
-                sel.append((s, g, iv))
-                seen.add(key)
-
-    _add_unique(top_pos)
-    _add_unique([strongest])
-    _add_unique(top_neg)
-
+                sel.append((s, g, iv)); seen.add(key)
+    _add_unique(top_pos); _add_unique([strongest]); _add_unique(top_neg)
     if len(sel) < 7:
         remaining = [x for x in all_items if (round(x[0],6), round(x[1],6)) not in seen]
         remaining_sorted = sorted(remaining, key=lambda x: abs(x[1]), reverse=True)
         for x in remaining_sorted:
             if len(sel) >= 7: break
             _add_unique([x])
-
     return sorted(sel, key=lambda x: x[0])[:7]
 
 # ----------------- Net Gamma + IV analysis -----------------
 def analyze_gamma_iv_v51(rows, expiry, split_by_price=True):
-    """
-    تُرجع:
-      price: سعر الأصل
-      picks: [(strike, net_gamma_signed, iv)]  — حتى 7 عناصر
-    """
     rows = [r for r in rows if r.get("details", {}).get("expiration_date") == expiry]
     if not rows: return None, []
-
     price = None
     for r in rows:
         p = r.get("underlying_asset", {}).get("price")
         if isinstance(p, (int, float)) and p > 0:
-            price = float(p)
-            break
-    if price is None:
-        return None, []
-
+            price = float(p); break
+    if price is None: return None, []
     calls_map, puts_map = _aggregate_gamma_by_strike(rows, price, split_by_price=split_by_price)
     picks = _pick_top7_directional(calls_map, puts_map)
     return price, picks
 
 # -------------------- Pine normalization -------------------
 def normalize_for_pine_v51(picks):
-    """
-    returns: strikes[], pcts(0..1)[], ivs[], signs(+1/-1/0)
-    """
-    if not picks:
-        return [], [], [], []
+    if not picks: return [], [], [], []
     max_abs = max(abs(v) for (_, v, __) in picks) or 1.0
     strikes = [round(float(s), 2) for (s, _, __) in picks]
     pcts    = [round(abs(v)/max_abs, 4) for (_, v, __) in picks]
@@ -267,24 +233,18 @@ def arr_or_empty_int(arr):
     return f"array.from({txt})" if txt else "array.new_int()"
 
 # -------------------- Expected Move (EM) -------------------
-# EM = Price * IV_annual * sqrt(days/365)
 def compute_weekly_em(rows, weekly_expiry):
-    if not weekly_expiry:
-        return None, None, None
+    if not weekly_expiry: return None, None, None
     price = None
     for r in rows:
         p = r.get("underlying_asset", {}).get("price")
         if isinstance(p, (int, float)) and p > 0:
             price = float(p); break
-    if price is None:
-        return None, None, None
-
+    if price is None: return None, None, None
     wk_rows = [r for r in rows if r.get("details", {}).get("expiration_date") == weekly_expiry]
     if not wk_rows: return price, None, None
-
     calls = [r for r in wk_rows if r.get("details", {}).get("contract_type") == "call"]
     puts  = [r for r in wk_rows if r.get("details", {}).get("contract_type") == "put"]
-
     def closest_iv(side_rows):
         best, best_diff = None, 1e18
         for r in side_rows:
@@ -294,16 +254,93 @@ def compute_weekly_em(rows, weekly_expiry):
                 diff = abs(float(strike) - price)
                 if diff < best_diff: best_diff, best = diff, float(iv)
         return best
-
     c_iv, p_iv = closest_iv(calls), closest_iv(puts)
     if c_iv is None and p_iv is None: return price, None, None
     iv_annual = c_iv if p_iv is None else p_iv if c_iv is None else (c_iv + p_iv)/2.0
-
-    y, m, d = map(int, weekly_expiry.split("-"))
-    exp_date = dt.date(y, m, d)
+    y, m, d = map(int, weekly_expiry.split("-")); exp_date = dt.date(y, m, d)
     days = max((exp_date - TODAY()).days, 1)
     em = price * iv_annual * math.sqrt(days / 365.0)
     return price, iv_annual, em
+
+# ===================== ΔOI + ΔIV SIGNALS ====================
+def _aggregate_oi_iv(rows, expiry, ref_price=None):
+    """
+    ترجع مجموع OI للكول والبت + IV-ATM تقريبي (أقرب سترايك للسعر).
+    """
+    rows = [r for r in rows if r.get("details", {}).get("expiration_date") == expiry]
+    if not rows: return None
+    price = ref_price
+    if price is None:
+        for r in rows:
+            p = r.get("underlying_asset", {}).get("price")
+            if isinstance(p, (int, float)) and p > 0:
+                price = float(p); break
+    calls_oi = 0.0; puts_oi = 0.0
+    iv_atm = None; best_diff = 1e18
+    for r in rows:
+        det = r.get("details", {}) or {}
+        strike = det.get("strike_price")
+        ctype  = det.get("contract_type")
+        oi     = r.get("open_interest")
+        iv     = r.get("implied_volatility")
+        if isinstance(oi, (int,float)):
+            if ctype == "call": calls_oi += float(oi)
+            elif ctype == "put": puts_oi += float(oi)
+        if isinstance(strike, (int,float)) and isinstance(iv, (int,float)) and isinstance(price, (int,float)):
+            diff = abs(float(strike) - float(price))
+            if diff < best_diff:
+                best_diff = diff; iv_atm = float(iv)
+    return {"calls": calls_oi, "puts": puts_oi, "iv_atm": iv_atm, "price": price}
+
+def _get_baseline(symbol, expiry):
+    sym_map = DAILY_BASE.get(symbol) or {}
+    rec = sym_map.get(expiry)
+    if rec and rec.get("date") == TODAY().isoformat():
+        return rec  # baseline set earlier today
+    return None
+
+def _set_baseline(symbol, expiry, agg):
+    DAILY_BASE.setdefault(symbol, {})
+    DAILY_BASE[symbol][expiry] = {
+        "date": TODAY().isoformat(),
+        "calls": float(agg["calls"] or 0.0),
+        "puts":  float(agg["puts"]  or 0.0),
+        "iv_atm": float(agg["iv_atm"] or 0.0)
+    }
+
+def _detect_credit_signal(today_agg, base_agg):
+    """
+    يرجع dict: { 'signal', 'call_rate','put_rate','iv_rate','explain' }
+    """
+    if not (today_agg and base_agg): 
+        return {"signal":"⚪ Neutral (no baseline)","call_rate":None,"put_rate":None,"iv_rate":None,"explain":"no-baseline"}
+    base_calls = max(base_agg["calls"], 1.0)
+    base_puts  = max(base_agg["puts"],  1.0)
+    base_iv    = max(base_agg["iv_atm"], 1e-9)
+
+    # احترم حد أدنى للـ OI
+    if (base_agg["calls"] + base_agg["puts"]) < MIN_BASE_OI:
+        return {"signal":"⚪ Neutral (low base OI)","call_rate":0.0,"put_rate":0.0,"iv_rate":0.0,"explain":"low-base-oi"}
+
+    call_rate = (today_agg["calls"] - base_agg["calls"]) / base_calls
+    put_rate  = (today_agg["puts"]  - base_agg["puts"])  / base_puts
+    iv_rate   = (today_agg["iv_atm"] - base_agg["iv_atm"]) / base_iv if (today_agg["iv_atm"] and base_agg["iv_atm"]) else 0.0
+
+    # قواعد القرار
+    if call_rate >= TH_CALL_RATE and put_rate <= 0.00 and iv_rate >= TH_IV_RATE:
+        sig = "📈 Bullish → Credit Put Spread ✅"
+    elif put_rate  >= TH_PUT_RATE  and call_rate <= 0.00 and iv_rate >= TH_IV_RATE:
+        sig = "📉 Bearish → Credit Call Spread ✅"
+    else:
+        sig = "⚪ Neutral"
+
+    return {
+        "signal": sig,
+        "call_rate": round(call_rate, 4),
+        "put_rate":  round(put_rate, 4),
+        "iv_rate":   round(iv_rate, 4),
+        "explain":   "rules-v1"
+    }
 
 # -------------------- Update + Cache -----------------------
 def update_symbol_data(symbol):
@@ -312,23 +349,38 @@ def update_symbol_data(symbol):
     if not expiries:
         return None
 
-    # احصل على جمعتين: الحالية والقادمة (إن وُجدت)
+    # Weekly targets
     exp_curr = nearest_weekly(expiries, next_week=False)
     exp_next = nearest_weekly(expiries, next_week=True)
     exp_m    = nearest_monthly(expiries)
 
-    # Weekly Current
+    # Weekly / Monthly picks
     wc_price, wc_picks = analyze_gamma_iv_v51(rows, exp_curr, split_by_price=True) if exp_curr else (None, [])
-    # Weekly Next
     wn_price, wn_picks = analyze_gamma_iv_v51(rows, exp_next, split_by_price=True) if exp_next else (None, [])
-    # Monthly
-    m_price,  m_picks  = analyze_gamma_iv_v51(rows, exp_m, split_by_price=True)    if exp_m    else (None, [])
+    m_price,  m_picks  = analyze_gamma_iv_v51(rows, exp_m,    split_by_price=True) if exp_m    else (None, [])
 
-    # EM لكلا الأسبوعين
+    # EM
     em_curr_price, em_curr_iv, em_curr_value = compute_weekly_em(rows, exp_curr) if exp_curr else (None, None, None)
     em_next_price, em_next_iv, em_next_value = compute_weekly_em(rows, exp_next) if exp_next else (None, None, None)
 
-    return {
+    # ΔOI + ΔIV signals per weekly expiry
+    signals = {}
+    for tag, ex in (("current", exp_curr), ("next", exp_next)):
+        if ex:
+            # aggregate today
+            agg_today = _aggregate_oi_iv(rows, ex, ref_price=wc_price if tag=="current" else wn_price)
+            # make baseline if not exist for today (أول مرة تُستدعى اليوم)
+            base = _get_baseline(symbol, ex)
+            if base is None and agg_today:
+                _set_baseline(symbol, ex, agg_today)
+                base = _get_baseline(symbol, ex)
+            # detect
+            sig = _detect_credit_signal(agg_today, base)
+            signals[tag] = {"expiry": ex, "today": agg_today, "base": base, "signal": sig}
+        else:
+            signals[tag] = None
+
+    data = {
         "symbol": symbol,
         "weekly_current": {"expiry": exp_curr, "price": wc_price, "picks": wc_picks},
         "weekly_next":    {"expiry": exp_next, "price": wn_price, "picks": wn_picks},
@@ -337,8 +389,10 @@ def update_symbol_data(symbol):
             "current": {"price": em_curr_price, "iv_annual": em_curr_iv, "weekly_em": em_curr_value},
             "next":    {"price": em_next_price, "iv_annual": em_next_iv, "weekly_em": em_next_value},
         },
+        "signals": signals,
         "timestamp": time.time()
     }
+    return data
 
 def get_symbol_data(symbol):
     now = time.time()
@@ -379,6 +433,13 @@ def all_pine():
         emn_txt = "na" if em_n_val is None else f"{float(em_n_val):.6f}"
         emn_ivt = "na" if em_n_iv  is None else f"{float(em_n_iv):.6f}"
         emn_prt = "na" if em_n_pr  is None else f"{float(em_n_pr):.6f}"
+
+        # Signals
+        sigs = data.get("signals", {}) or {}
+        sig_curr = sigs.get("current") or {}
+        sig_next = sigs.get("next") or {}
+        sig_text_curr = sig_curr.get("signal", {}).get("signal", "⚪ Neutral")
+        sig_text_next = sig_next.get("signal", {}).get("signal", "⚪ Neutral")
 
         block = f"""
 //========= {sym} =========
@@ -446,9 +507,13 @@ if syminfo.ticker == "{sym}"
         emTopL := label.new(bar_index, up, "📈 أعلى مدى متوقع: " + str.tostring(up, "#.##"),style=label.style_label_down, color=color.new(gold, 0), textcolor=color.black, size=size.small)
         emBotL := label.new(bar_index, dn, "📉 أدنى مدى متوقع: " + str.tostring(dn, "#.##"),style=label.style_label_up,   color=color.new(gold, 0), textcolor=color.black, size=size.small)
 
-
-
-       
+    // === Credit Signal Table (ΔOI + ΔIV) ===
+    var table sigT = table.new(position.bottom_right, 1, 2)
+    if barstate.islast
+        table.cell(sigT, 0, 0, "Week: Current", text_color=color.white, bgcolor=color.new(color.black, 70), text_size=size.small)
+        table.cell(sigT, 0, 1, "{sig_text_curr}", text_color=color.white, bgcolor=color.new(color.black, 60), text_size=size.small)
+        table.cell(sigT, 0, 0, "Week: Next", text_color=color.white, bgcolor=color.new(color.black, 70), text_size=size.small)
+        table.cell(sigT, 0, 1, "{sig_text_next}", text_color=color.white, bgcolor=color.new(color.black, 60), text_size=size.small)
 """
         blocks.append(block)
 
@@ -457,7 +522,7 @@ if syminfo.ticker == "{sym}"
 
     pine = f"""//@version=5
 // Last Update (Riyadh): {last_update}
-indicator("GEX PRO (v5.6)", overlay=true, max_lines_count=500, max_labels_count=500, dynamic_requests=true)
+indicator("GEX PRO (v6.9)", overlay=true, max_lines_count=500, max_labels_count=500, dynamic_requests=true)
 
 // إعدادات عامة
 mode     = "Weekly"
@@ -494,12 +559,23 @@ draw_bars(_s, _p, _iv, _sgn) =>
             bar_len = int(math.max(10, pct * 50))
 
             line.new(bar_index + 3, y, bar_index + bar_len + 12, y, color=bar_col, width=6)
-            label.new(bar_index + bar_len + 2, y,str.tostring(pct*100, "#.##") + "% | IV " + str.tostring(iv*100, "#.##") + "%",style=label.style_label_left, color=color.rgb(95, 93, 93), textcolor=color.white, size=size.small)
+            label.new(bar_index + bar_len + 2, y, str.tostring(pct*100, "#.##") + "% | IV " + str.tostring(iv*100, "#.##"), style=label.style_label_left, color=color.rgb(95, 93, 93), textcolor=color.white, size=size.small)
 
 // --- Per-symbol blocks ---
 {''.join(blocks)}
 """
     return Response(pine, mimetype="text/plain")
+
+# ---------------------- /signals/json ----------------------
+@app.route("/signals/json")
+def signals_json():
+    if not POLY_KEY: return _err("Missing POLYGON_API_KEY", 401)
+    out = {}
+    for sym in SYMBOLS:
+        d = get_symbol_data(sym)
+        if not d: continue
+        out[sym] = d.get("signals", {})
+    return jsonify({"status": "OK", "updated": dt.datetime.utcnow().isoformat()+"Z", "data": out})
 
 # ---------------------- /all/json --------------------------
 @app.route("/all/json")
@@ -535,6 +611,7 @@ def all_json():
                 "top7":   _to_obj(data["monthly"].get("picks", []))
             },
             "em": data.get("em"),
+            "signals": data.get("signals"),
             "timestamp": data["timestamp"]
         }
     return jsonify({
@@ -561,8 +638,8 @@ def em_json():
 def home():
     return jsonify({
         "status": "OK ✅",
-        "message": "Bassam GEX PRO server is running (v5.6 – Dual Week + Dynamic EM)",
-        "note": "Data cache loading in background..."
+        "message": "Bassam GEX PRO server is running (v6.9 – Dual Week + Dynamic EM + Credit Signals)",
+        "note": "Data cache & signals updating..."
     })
 
 # ------------------------ Background Loader ----------------
