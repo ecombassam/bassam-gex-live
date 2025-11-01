@@ -525,10 +525,11 @@ if syminfo.ticker == "{sym}"
     // === Credit Signal Table (ΔOI + ΔIV) ===
     var table sigT = table.new(position.bottom_right, 1, 2)
     if barstate.islast
-        table.cell(sigT, 0, 0, "Week: Current", text_color=color.white, bgcolor=color.new(color.black, 70), text_size=size.small)
-        table.cell(sigT, 0, 1, "{sig_text_curr}", text_color=color.white, bgcolor=color.new(color.black, 60), text_size=size.small)
-        table.cell(sigT, 0, 0, "Week: Next", text_color=color.white, bgcolor=color.new(color.black, 70), text_size=size.small)
-        table.cell(sigT, 0, 1, "{sig_text_next}", text_color=color.white, bgcolor=color.new(color.black, 60), text_size=size.small)
+        table.cell(sigT, 0, 0, "Week: Current", text_color=color.white, bgcolor=color.new(color.black, 0))
+        table.cell(sigT, 0, 1, "{sig_text_curr}", text_color=color.white, bgcolor=color.new(color.black, 0))
+        table.cell(sigT, 1, 0, "Week: Next", text_color=color.white, bgcolor=color.new(color.black, 0))
+        table.cell(sigT, 1, 1, "{sig_text_next}", text_color=color.white, bgcolor=color.new(color.black, 0))
+
 """
         blocks.append(block)
 
