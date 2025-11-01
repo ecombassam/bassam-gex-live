@@ -91,17 +91,21 @@ def fetch_all(symbol):
     cursor, all_rows = None, []
     for _ in range(10):
         params = {"limit": 50}
-        if cursor: params["cursor"] = cursor
+        if cursor:
+            params["cursor"] = cursor
         status, j = _get(url, params)
-        if status != 200 or j.get("status") !="OK":break
-            rows = j.get("results") or []
-            all_rows.extend(rows)
-            cursor = j.get("next_url")
-            if not cursor: break
-            if "cursor=" in cursor:
-                cursor = cursor.split("cursor=")[-1]
-            else:
-                cursor = None
+        if status != 200 or j.get("status") != "OK":
+            break
+
+        rows = j.get("results") or []
+        all_rows.extend(rows)
+        cursor = j.get("next_url")
+        if not cursor:
+            break
+        if "cursor=" in cursor:
+            cursor = cursor.split("cursor=")[-1]
+        else:
+            cursor = None
         return all_rows
 
 
