@@ -781,9 +781,35 @@ def report_pine_all():
 
         for sym in symbols:
             s = all_data.get(sym, {})
-            sig_text = s.get("signals", {}).get("current", {}).get("signal", {}).get("signal", "⚪ Neutral")
-            price = s.get("signals", {}).get("current", {}).get("today", {}).get("price", 0)
-            wk = s.get("weekly_current", {}).get("top7", [])
+                # 🔹 تحليل الاتجاه وتحديد نوع صفقة الكريدت الذكية
+    sig_text = s.get("signals", {}).get("current", {}).get("signal", {}).get("signal", "⚪ Neutral")
+    wk = s.get("weekly_current", {}).get("top7", [])
+    iv_now = s.get("signals", {}).get("current", {}).get("today", {}).get("iv_atm", 0)
+    iv_base = s.get("signals", {}).get("current", {}).get("base", {}).get("iv_atm", 0)
+    iv_change = ((iv_now - iv_base) / iv_base) * 100 if iv_base else 0
+
+    credit_text = ""
+    if wk and abs(iv_change) >= 5:  # شرط IV
+        strikes = sorted([x.get("strike") for x in wk if x.get("strike")])
+        gammas  = [x.get("net_gamma", 0) for x in wk]
+        max_gamma = max(abs(g) for g in gammas) if gammas else 0
+
+        # نتحقق من أن أقرب استرايك جاما له قوي بما يكفي
+        strong_levels = [x for x in wk if abs(x.get("net_gamma", 0)) >= 0.3 * max_gamma]
+        if strong_levels:
+            nearest = min(strong_levels, key=lambda x: abs(x["strike"] - price))
+            base_strike = nearest["strike"]
+
+            # 🔸 نوع الصفقة حسب الاتجاه
+            if "📈" in sig_text:  # Bullish
+                short_leg = base_strike
+                long_leg  = base_strike - 5
+                credit_text = f"📈 Credit Put Spread: بيع {short_leg}P وشراء {long_leg}P — فرصة قوية ✅"
+            elif "📉" in sig_text:  # Bearish
+                short_leg = base_strike
+                long_leg  = base_strike + 5
+                credit_text = f"📉 Credit Call Spread: بيع {short_leg}C وشراء {long_leg}C — فرصة قوية ✅"
+
 
             if not wk:
                 # لو ما وُجدت بيانات أسبوعية نتخطى الرمز
