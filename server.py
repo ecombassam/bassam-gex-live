@@ -55,7 +55,7 @@ def get_next_earnings(symbol):
     """🔹 يجلب أقرب تاريخ إعلان أرباح للسهم (باستخدام Polygon Reference API)"""
     try:
         # طلب بيانات الأرباح الحديثة
-        url = f"https://api.polygon.io/vX/reference/earnings?ticker={symbol}"
+        url = f"https://api.polygon.io/v3/reference/earnings?ticker={symbol}"
         status, data = _get(url)
         if status != 200 or "results" not in data:
             return None
@@ -115,7 +115,7 @@ def list_future_expiries(rows):
         r.get("details", {}).get("expiration_date")
         for r in rows if r.get("details", {}).get("expiration_date")
     })
-    today = TODAY().isoformat()
+    "timestamp": dt.datetime.now().strftime("%Y-%m-%dT%H:00")
     return [d for d in expiries if d >= today]
 
 def list_fridays(expiries):
@@ -343,8 +343,14 @@ def _aggregate_oi_iv(rows, expiry, ref_price=None):
 def _get_baseline(symbol, expiry):
     sym_map = DAILY_BASE.get(symbol) or {}
     rec = sym_map.get(expiry)
-    if rec and rec.get("date") == TODAY().isoformat():
-        return rec  # baseline set earlier today
+    if rec:
+        last_ts = rec.get("timestamp")
+        if last_ts:
+            last_dt = dt.datetime.strptime(last_ts, "%Y-%m-%dT%H:%M")
+            # اعتبره صالحاً فقط لو لم يمر عليه أكثر من ساعة
+            if (dt.datetime.now() - last_dt).total_seconds() < 3600:
+                return rec  # baseline set within the last hour
+
     return None
 
 def _set_baseline(symbol, expiry, agg):
