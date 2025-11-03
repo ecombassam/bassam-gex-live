@@ -115,7 +115,7 @@ def list_future_expiries(rows):
         r.get("details", {}).get("expiration_date")
         for r in rows if r.get("details", {}).get("expiration_date")
     })
-    "timestamp": dt.datetime.now().strftime("%Y-%m-%dT%H:00")
+    today = TODAY().isoformat()
     return [d for d in expiries if d >= today]
 
 def list_fridays(expiries):
@@ -356,11 +356,10 @@ def _get_baseline(symbol, expiry):
 def _set_baseline(symbol, expiry, agg):
     DAILY_BASE.setdefault(symbol, {})
     DAILY_BASE[symbol][expiry] = {
-        "date": TODAY().isoformat(),
+        "timestamp": dt.datetime.now().strftime("%Y-%m-%dT%H:00"),
         "calls": float(agg["calls"] or 0.0),
         "puts":  float(agg["puts"]  or 0.0),
         "iv_atm": float(agg["iv_atm"] or 0.0)
-        
     }
 
 def _detect_credit_signal(today_agg, base_agg):
