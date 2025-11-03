@@ -639,6 +639,189 @@ draw_bars(_s, _p, _iv, _sgn) =>
 """
     return Response(pine, mimetype="text/plain")
 
+
+@app.route("/report/pine/all")
+def report_pine_all():
+    """تقرير شامل لجميع الشركات (Credit Monitor Report) مع إظهار وقت آخر تحديث البيانات"""
+    try:
+        import datetime as dt
+        now_hhmm = dt.datetime.now().strftime("%Y-%m-%d %H:%M")
+        with open("data/all.json", "r", encoding="utf-8") as f:
+            data = json.load(f)
+
+        # وقت آخر تحديث من مصدر البيانات (كما تحفظه بسيرفرك داخل all.json)
+        updated_iso = data.get("updated") or ""
+        # سنعرضه كما هو، وإن غاب سنعرض "غير متوفر"
+        updated_display = updated_iso if updated_iso else "غير متوفر"
+
+        symbols = data.get("symbols", [])
+        all_data = data.get("data", {})
+
+        def classify(sig_text: str):
+            """إرجاع (class, label) بناءً على نص الإشارة"""
+            s = (sig_text or "").strip()
+            if "Bull" in s or "Put" in s or "📈" in s:
+                return "bull", "Credit Put Spread"
+            if "Bear" in s or "Call" in s or "📉" in s:
+                return "bear", "Credit Call Spread"
+            return "neutral", "محايد"
+
+        html = f"""
+        <html dir="rtl" lang="ar">
+        <head>
+        <meta charset="utf-8">
+        <title>تقرير Bassam GEX Pro v7.0 – مراقبة فرص Credit – {now_hhmm}</title>
+        <style>
+            @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700&display=swap');
+            :root {{
+                --bg: #0a0a0a;
+                --panel: #141414;
+                --grid: #222;
+                --grid-soft: #1a1a1a;
+                --text: #f2f2f2;
+                --muted: #9aa0a6;
+                --accent: #00ffb0;
+                --bull: #13f29a;
+                --bear: #ff5757;
+                --neutral: #bdbdbd;
+            }}
+            * {{ box-sizing: border-box; }}
+            body {{
+                font-family: "Tajawal", system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+                background-color: var(--bg);
+                color: var(--text);
+                padding: 24px;
+                line-height: 1.65;
+            }}
+            .wrap {{ max-width: 1200px; margin: 0 auto; }}
+            h1 {{
+                color: var(--accent);
+                text-align: center;
+                margin: 0 0 10px 0;
+                font-size: 26px;
+                font-weight: 700;
+            }}
+            .sub {{
+                text-align: center;
+                color: var(--muted);
+                margin-bottom: 24px;
+                font-size: 14px;
+            }}
+            .card {{
+                background: var(--panel);
+                border: 1px solid var(--grid);
+                border-radius: 14px;
+                padding: 14px;
+                margin-bottom: 18px;
+            }}
+            table {{
+                width: 100%;
+                border-collapse: collapse;
+                overflow: hidden;
+                border-radius: 10px;
+            }}
+            thead th {{
+                background-color: #101010;
+                color: var(--accent);
+                font-weight: 600;
+                border-bottom: 1px solid var(--grid);
+                padding: 10px 12px;
+                text-align: center;
+                white-space: nowrap;
+            }}
+            tbody td {{
+                border-bottom: 1px solid var(--grid);
+                padding: 10px 12px;
+                text-align: center;
+                vertical-align: middle;
+            }}
+            tbody tr:nth-child(even) {{ background-color: var(--grid-soft); }}
+            .chip {{
+                display: inline-block;
+                padding: 4px 10px;
+                border-radius: 999px;
+                font-weight: 600;
+                font-size: 12px;
+            }}
+            .bull {{ color: var(--bull); }}
+            .bear {{ color: var(--bear); }}
+            .neutral {{ color: var(--neutral); }}
+            .chip.bull {{ border: 1px solid var(--bull); }}
+            .chip.bear {{ border: 1px solid var(--bear); }}
+            .chip.neutral {{ border: 1px solid var(--neutral); }}
+            .muted {{ color: var(--muted); font-size: 12px; }}
+            footer {{
+                text-align: center;
+                color: var(--muted);
+                margin-top: 22px;
+                font-size: 13px;
+            }}
+        </style>
+        </head>
+        <body>
+        <div class="wrap">
+            <h1>تقرير Bassam GEX Pro v7.0 – مراقبة فرص Credit – {now_hhmm}</h1>
+            <div class="sub">
+                🔄 آخر تحديث من البيانات: <b>{updated_display}</b>
+            </div>
+
+            <div class="card">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>الرمز</th>
+                            <th>الإشارة</th>
+                            <th>نوع الصفقة</th>
+                            <th>نطاق الجاما (Top7/أسبوعي)</th>
+                            <th>السعر</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+        """
+
+        for sym in symbols:
+            s = all_data.get(sym, {})
+            sig_text = s.get("signals", {}).get("current", {}).get("signal", {}).get("signal", "⚪ Neutral")
+            price = s.get("signals", {}).get("current", {}).get("today", {}).get("price", 0)
+            wk = s.get("weekly_current", {}).get("top7", [])
+
+            if not wk:
+                # لو ما وُجدت بيانات أسبوعية نتخطى الرمز
+                continue
+
+            gmin = min(wk, key=lambda x: x.get("strike", float("inf"))).get("strike")
+            gmax = max(wk, key=lambda x: x.get("strike", float("-inf"))).get("strike")
+
+            cls, typ = classify(sig_text)
+            sig_html = f'<span class="chip {cls}">{sig_text}</span>'
+
+            html += f"""
+                        <tr>
+                            <td><b>{sym}</b></td>
+                            <td>{sig_html}</td>
+                            <td class="{cls}">{typ}</td>
+                            <td>{gmin} → {gmax}</td>
+                            <td>{price:.2f}</td>
+                        </tr>
+            """
+
+        html += f"""
+                    </tbody>
+                </table>
+                <div class="muted">* نطاق الجاما محسوب من أعلى 7 مستويات أسبوعية مخزنة.</div>
+            </div>
+
+            <footer>© {dt.datetime.now().year} Bassam Al-Faifi — All Rights Reserved</footer>
+        </div>
+        </body>
+        </html>
+        """
+
+        return Response(html, mimetype="text/html")
+
+    except Exception as e:
+        return jsonify({"error": str(e)})
+
 # ---------------------- /signals/json ----------------------
 @app.route("/signals/json")
 def signals_json():
