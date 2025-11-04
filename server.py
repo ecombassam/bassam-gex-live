@@ -777,118 +777,113 @@ def report_pine_all():
                             <th>الفرصة المقترحة</th>
                         </tr>
                     </thead>
-                    <tbody>
-        # ========================================
-        # 🔹 توليد صفوف التقرير (HTML Table Rows)
-        # ========================================
-        for sym in symbols:
-            s = all_data.get(sym, {})
+<tbody>
+# ========================================
+# 🔹 توليد صفوف التقرير (HTML Table Rows)
+# ========================================
+for sym in symbols:
+    s = all_data.get(sym, {})
 
-            # 🔸 حماية ضد البيانات غير المكتملة
-            wcur = s.get("weekly_current", {})
-            wk = []
-            price = 0
-            expiry = ""
+    # 🔸 حماية ضد البيانات غير المكتملة
+    wcur = s.get("weekly_current", {})
+    wk = []
+    price = 0
+    expiry = ""
 
-            if isinstance(wcur, dict):
-                wk = wcur.get("picks", [])
-                price = wcur.get("price", 0)
-                expiry = wcur.get("expiry", "")
-            elif isinstance(wcur, list):
-                wk = wcur
-            else:
-                wk = []
+    if isinstance(wcur, dict):
+        wk = wcur.get("picks", [])
+        price = wcur.get("price", 0)
+        expiry = wcur.get("expiry", "")
+    elif isinstance(wcur, list):
+        wk = wcur
+    else:
+        wk = []
 
-            sig_text = (
-                s.get("signals", {})
-                .get("current", {})
-                .get("signal", {})
-                .get("signal", "⚪ Neutral")
-            )
+    sig_text = (
+        s.get("signals", {})
+        .get("current", {})
+        .get("signal", {})
+        .get("signal", "⚪ Neutral")
+    )
 
-            # -------------------------------
-            # 🔹 تحليل الصفقة المقترحة (Credit)
-            # -------------------------------
-            credit_text = "—"
-            note = "—"
+    # -------------------------------
+    # 🔹 تحليل الصفقة المقترحة (Credit)
+    # -------------------------------
+    credit_text = "—"
+    note = "—"
 
-            if wk and price:
-                nearest = min(wk, key=lambda x: abs(x.get("strike", 0) - price))
-                base_strike = nearest.get("strike", 0)
-                net_gamma = nearest.get("net_gamma", 0)
+    if wk and price:
+        nearest = min(wk, key=lambda x: abs(x.get("strike", 0) - price))
+        base_strike = nearest.get("strike", 0)
+        net_gamma = nearest.get("net_gamma", 0)
 
-                if "📈" in sig_text or "Bull" in sig_text:
-                    short_leg = base_strike
-                    long_leg = base_strike - 5
-                    credit_text = f"📈 Put Credit Spread – بيع {short_leg}P / شراء {long_leg}P (تنتهي {expiry})"
-                    if net_gamma > 0:
-                        note = "📈 دعم قوي أسفل السعر – احتمال ارتداد"
-                    else:
-                        note = "⚠️ مراقبة الحركة – Gamma ضعيف حاليًا"
+        if "📈" in sig_text or "Bull" in sig_text:
+            short_leg = base_strike
+            long_leg = base_strike - 5
+            credit_text = f"📈 Put Credit Spread – بيع {short_leg}P / شراء {long_leg}P (تنتهي {expiry})"
+            note = "📈 دعم قوي أسفل السعر – احتمال ارتداد" if net_gamma > 0 else "⚠️ مراقبة الحركة – Gamma ضعيف حاليًا"
 
-                elif "📉" in sig_text or "Bear" in sig_text:
-                    short_leg = base_strike
-                    long_leg = base_strike + 5
-                    credit_text = f"📉 Call Credit Spread – بيع {short_leg}C / شراء {long_leg}C (تنتهي {expiry})"
-                    if net_gamma < 0:
-                        note = "📉 Gamma سلبي قوي – ضغط بيعي محتمل"
-                    else:
-                        note = "⚠️ تأكيد الاتجاه غدًا بعد تحديث OI"
+        elif "📉" in sig_text or "Bear" in sig_text:
+            short_leg = base_strike
+            long_leg = base_strike + 5
+            credit_text = f"📉 Call Credit Spread – بيع {short_leg}C / شراء {long_leg}C (تنتهي {expiry})"
+            note = "📉 Gamma سلبي قوي – ضغط بيعي محتمل" if net_gamma < 0 else "⚠️ تأكيد الاتجاه غدًا بعد تحديث OI"
 
-                else:
-                    note = "⚪ إشارة محايدة – لم يتأكد الاتجاه بعد"
+        else:
+            note = "⚪ إشارة محايدة – لم يتأكد الاتجاه بعد"
 
-            # -------------------------------
-            # 🔹 نطاق الجاما (Top7)
-            # -------------------------------
-            if wk:
-                gmin = min(wk, key=lambda x: x.get("strike", float("inf"))).get("strike", "")
-                gmax = max(wk, key=lambda x: x.get("strike", float("-inf"))).get("strike", "")
-                range_text = f"{gmin} → {gmax}"
-            else:
-                range_text = "—"
+    # -------------------------------
+    # 🔹 نطاق الجاما (Top7)
+    # -------------------------------
+    if wk:
+        gmin = min(wk, key=lambda x: x.get("strike", float("inf"))).get("strike", "")
+        gmax = max(wk, key=lambda x: x.get("strike", float("-inf"))).get("strike", "")
+        range_text = f"{gmin} → {gmax}"
+    else:
+        range_text = "—"
 
-            # -------------------------------
-            # 🔹 تصنيف الإشارة
-            # -------------------------------
-            cls, typ = classify(sig_text)
-            sig_html = f'<span class="chip {cls}">{sig_text}</span>'
+    # -------------------------------
+    # 🔹 تصنيف الإشارة
+    # -------------------------------
+    cls, typ = classify(sig_text)
+    sig_html = f'<span class="chip {cls}">{sig_text}</span>'
 
-            # -------------------------------
-            # 🔹 صف الجدول (HTML Row)
-            # -------------------------------
-            html += f"""
-                <tr>
-                    <td><b>{sym}</b></td>
-                    <td>{sig_html}</td>
-                    <td class="{cls}">{typ}</td>
-                    <td>{range_text}</td>
-                    <td>{credit_text}</td>
-                    <td>{note}</td>
-                </tr>
-            """
+    # -------------------------------
+    # 🔹 صف الجدول (HTML Row)
+    # -------------------------------
+    html += f"""
+        <tr>
+            <td><b>{sym}</b></td>
+            <td>{sig_html}</td>
+            <td class="{cls}">{typ}</td>
+            <td>{range_text}</td>
+            <td>{credit_text}</td>
+            <td>{note}</td>
+        </tr>
+    """
 
+# ✅ هذا الجزء بعد حلقة الـ for مباشرة
+html += f"""
+        </tbody>
+    </table>
+    <div class="muted">* نطاق الجاما محسوب من أعلى 7 مستويات أسبوعية.</div>
+</div>
 
-        html += f"""
-                    </tbody>
-                </table>
-                <div class="muted">* نطاق الجاما محسوب من أعلى 7 مستويات أسبوعية.</div>
-            </div>
+<footer>© {dt.datetime.now().year} Bassam Al-Faifi — All Rights Reserved</footer>
+</div>
+</body>
+</html>
+"""
 
-            <footer>© {dt.datetime.now().year} Bassam Al-Faifi — All Rights Reserved</footer>
-        </div>
-        </body>
-        </html>
-        """
+os.makedirs("data", exist_ok=True)
+with open("data/all.json", "w", encoding="utf-8") as f:
+    json.dump(all_data, f, ensure_ascii=False, indent=2)
 
-        os.makedirs("data", exist_ok=True)
-        with open("data/all.json", "w", encoding="utf-8") as f:
-            json.dump(all_data, f, ensure_ascii=False, indent=2)
+return Response(html, mimetype="text/html")
 
-        return Response(html, mimetype="text/html")
+except Exception as e:
+    return jsonify({"error": str(e)})
 
-    except Exception as e:
-        return jsonify({"error": str(e)})
 
 
 # ---------------------- /signals/json ----------------------
