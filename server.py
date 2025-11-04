@@ -761,7 +761,7 @@ def report_pine_all():
         </head>
         <body>
         <div class="wrap">
-            <h1>تقرير Bassam GEX Pro v7.0 – مراقبة فرص Credit – {now_hhmm}</h1>
+            <h1>تقرير Bassam GEX Pro v7.0 – مراقبة فرص  – {now_hhmm}</h1>
             <div class="sub">
                 🔄 آخر تحديث من البيانات: <b>{updated_display}</b>
             </div>
@@ -781,10 +781,37 @@ def report_pine_all():
         """
 
         for sym in symbols:
-            s = all_data.get(sym, {})
-            sig_text = s.get("signals", {}).get("current", {}).get("signal", {}).get("signal", "⚪ Neutral")
-            wk = s.get("weekly_current", {}).get("picks", [])
-            price = s.get("weekly_current", {}).get("price", 0)
+    s = all_data.get(sym, {})
+
+    # 🔸 نحصل على البيانات بأمان بغض النظر عن شكلها
+    wcur = s.get("weekly_current", {})
+    if isinstance(wcur, list):
+        wk = wcur
+    else:
+        wk = wcur.get("picks", [])
+
+    price = 0
+    if isinstance(wcur, dict):
+        price = wcur.get("price", 0)
+
+    sig_text = s.get("signals", {}).get("current", {}).get("signal", {}).get("signal", "⚪ Neutral")
+
+    credit_text = "—"
+    if wk and price:
+        nearest = min(wk, key=lambda x: abs(x.get("strike", 0) - price))
+        base_strike = nearest.get("strike", 0)
+        expiry = (wcur.get("expiry") if isinstance(wcur, dict) else "")
+
+        if "📈" in sig_text or "Bull" in sig_text:
+            short_leg = base_strike
+            long_leg = base_strike - 5
+            credit_text = f"📈 Put Credit Spread – بيع {short_leg}P وشراء {long_leg}P (تنتهي {expiry})"
+        elif "📉" in sig_text or "Bear" in sig_text:
+            short_leg = base_strike
+            long_leg = base_strike + 5
+            credit_text = f"📉 Call Credit Spread – بيع {short_leg}C وشراء {long_leg}C (تنتهي {expiry})"
+
+
             iv_now = s.get("signals", {}).get("current", {}).get("today", {}).get("iv_atm", 0)
             iv_base = s.get("signals", {}).get("current", {}).get("base", {}).get("iv_atm", 0)
             iv_change = ((iv_now - iv_base) / iv_base) * 100 if iv_base else 0
