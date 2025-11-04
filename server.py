@@ -790,13 +790,22 @@ def report_pine_all():
             expiry = ""
 
             if isinstance(wcur, dict):
-                wk = wcur.get("picks", [])
+                # ✅ يدعم الحقول الجديدة top7 أو picks أو حتى قائمة مباشرة
+                if "top7" in wcur:
+                    wk = wcur.get("top7", [])
+                elif "picks" in wcur:
+                    wk = wcur.get("picks", [])
+                elif isinstance(wcur, list):
+                    wk = wcur
+                else:
+                    wk = []
                 price = wcur.get("price", 0)
                 expiry = wcur.get("expiry", "")
             elif isinstance(wcur, list):
-                wk = wcur  # في حال كانت قائمة
+                wk = wcur
             else:
                 wk = []
+
 
             # ⚙️ تأكد أن wk قائمة من قواميس تحتوي على strike
             wk = [x for x in wk if isinstance(x, dict) and "strike" in x]
