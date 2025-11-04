@@ -780,36 +780,48 @@ def report_pine_all():
                     <tbody>
         """
 
-        for sym in symbols:
+                for sym in symbols:
             s = all_data.get(sym, {})
 
             # 🔸 نحصل على البيانات بأمان بغض النظر عن شكلها
             wcur = s.get("weekly_current", {})
-            if isinstance(wcur, list):
-                wk = wcur
-            else:
-                wk = wcur.get("picks", [])
-
+            wk = []
             price = 0
-            if isinstance(wcur, dict):
-                price = wcur.get("price", 0)
+            expiry = ""
 
-            sig_text = s.get("signals", {}).get("current", {}).get("signal", {}).get("signal", "⚪ Neutral")
+            if isinstance(wcur, dict):
+                wk = wcur.get("picks", [])
+                price = wcur.get("price", 0)
+                expiry = wcur.get("expiry", "")
+            elif isinstance(wcur, list):
+                wk = wcur  # في حال كانت قائمة
+            else:
+                wk = []
+
+            sig_text = (
+                s.get("signals", {})
+                .get("current", {})
+                .get("signal", {})
+                .get("signal", "⚪ Neutral")
+            )
 
             credit_text = "—"
             if wk and price:
                 nearest = min(wk, key=lambda x: abs(x.get("strike", 0) - price))
                 base_strike = nearest.get("strike", 0)
-                expiry = (wcur.get("expiry") if isinstance(wcur, dict) else "")
 
                 if "📈" in sig_text or "Bull" in sig_text:
                     short_leg = base_strike
                     long_leg = base_strike - 5
-                    credit_text = f"📈 Put Credit Spread – بيع {short_leg}P وشراء {long_leg}P (تنتهي {expiry})"
+                    credit_text = (
+                        f"📈 Put Credit Spread – بيع {short_leg}P وشراء {long_leg}P (تنتهي {expiry})"
+                    )
                 elif "📉" in sig_text or "Bear" in sig_text:
                     short_leg = base_strike
                     long_leg = base_strike + 5
-                    credit_text = f"📉 Call Credit Spread – بيع {short_leg}C وشراء {long_leg}C (تنتهي {expiry})"
+                    credit_text = (
+                        f"📉 Call Credit Spread – بيع {short_leg}C وشراء {long_leg}C (تنتهي {expiry})"
+                    )
 
 
 
