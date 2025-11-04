@@ -12,6 +12,7 @@ import os, json, datetime as dt, requests, time, math
 from flask import Flask, jsonify, Response
 
 app = Flask(__name__)
+os.makedirs("data", exist_ok=True)
 POLY_KEY  = (os.environ.get("POLYGON_API_KEY") or "").strip()
 BASE_SNAP = "https://api.polygon.io/v3/snapshot/options"
 TODAY     = dt.date.today
@@ -649,16 +650,13 @@ def report_pine_all():
         with open("data/all.json", "r", encoding="utf-8") as f:
             data = json.load(f)
 
-        # وقت آخر تحديث من مصدر البيانات (كما تحفظه بسيرفرك داخل all.json)
         updated_iso = data.get("updated") or ""
-        # سنعرضه كما هو، وإن غاب سنعرض "غير متوفر"
         updated_display = updated_iso if updated_iso else "غير متوفر"
 
         symbols = data.get("symbols", [])
         all_data = data.get("data", {})
 
         def classify(sig_text: str):
-            """إرجاع (class, label) بناءً على نص الإشارة"""
             s = (sig_text or "").strip()
             if "Bull" in s or "Put" in s or "📈" in s:
                 return "bull", "Credit Put Spread"
@@ -772,8 +770,8 @@ def report_pine_all():
                             <th>الرمز</th>
                             <th>الإشارة</th>
                             <th>نوع الصفقة</th>
-                            <th>نطاق الجاما (Top7/أسبوعي)</th>
-                            <th>السعر</th>
+                            <th>نطاق الجاما (Top7)</th>
+                            <th>الفرصة المقترحة</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -781,60 +779,53 @@ def report_pine_all():
 
         for sym in symbols:
             s = all_data.get(sym, {})
-                # 🔹 تحليل الاتجاه وتحديد نوع صفقة الكريدت الذكية
-    sig_text = s.get("signals", {}).get("current", {}).get("signal", {}).get("signal", "⚪ Neutral")
-    wk = s.get("weekly_current", {}).get("top7", [])
-    iv_now = s.get("signals", {}).get("current", {}).get("today", {}).get("iv_atm", 0)
-    iv_base = s.get("signals", {}).get("current", {}).get("base", {}).get("iv_atm", 0)
-    iv_change = ((iv_now - iv_base) / iv_base) * 100 if iv_base else 0
+            sig_text = s.get("signals", {}).get("current", {}).get("signal", {}).get("signal", "⚪ Neutral")
+            wk = s.get("weekly_current", {}).get("top7", [])
+            price = s.get("weekly_current", {}).get("price", 0)
+            iv_now = s.get("signals", {}).get("current", {}).get("today", {}).get("iv_atm", 0)
+            iv_base = s.get("signals", {}).get("current", {}).get("base", {}).get("iv_atm", 0)
+            iv_change = ((iv_now - iv_base) / iv_base) * 100 if iv_base else 0
 
-    credit_text = ""
-    if wk and abs(iv_change) >= 5:  # شرط IV
-        strikes = sorted([x.get("strike") for x in wk if x.get("strike")])
-        gammas  = [x.get("net_gamma", 0) for x in wk]
-        max_gamma = max(abs(g) for g in gammas) if gammas else 0
+            credit_text = ""
+            if wk and abs(iv_change) >= 5:
+                gammas = [x.get("net_gamma", 0) for x in wk]
+                max_gamma = max(abs(g) for g in gammas) if gammas else 0
+                strong_levels = [x for x in wk if abs(x.get("net_gamma", 0)) >= 0.3 * max_gamma]
+                if strong_levels:
+                    nearest = min(strong_levels, key=lambda x: abs(x["strike"] - price))
+                    base_strike = nearest["strike"]
 
-        # نتحقق من أن أقرب استرايك جاما له قوي بما يكفي
-        strong_levels = [x for x in wk if abs(x.get("net_gamma", 0)) >= 0.3 * max_gamma]
-        if strong_levels:
-            nearest = min(strong_levels, key=lambda x: abs(x["strike"] - price))
-            base_strike = nearest["strike"]
-
-            # 🔸 نوع الصفقة حسب الاتجاه
-            if "📈" in sig_text:  # Bullish
-                short_leg = base_strike
-                long_leg  = base_strike - 5
-                credit_text = f"📈 Credit Put Spread: بيع {short_leg}P وشراء {long_leg}P — فرصة قوية ✅"
-            elif "📉" in sig_text:  # Bearish
-                short_leg = base_strike
-                long_leg  = base_strike + 5
-                credit_text = f"📉 Credit Call Spread: بيع {short_leg}C وشراء {long_leg}C — فرصة قوية ✅"
-
+                    if "📈" in sig_text:
+                        short_leg = base_strike
+                        long_leg = base_strike - 5
+                        credit_text = f"📈 بيع {short_leg}P / شراء {long_leg}P"
+                    elif "📉" in sig_text:
+                        short_leg = base_strike
+                        long_leg = base_strike + 5
+                        credit_text = f"📉 بيع {short_leg}C / شراء {long_leg}C"
 
             if not wk:
-                # لو ما وُجدت بيانات أسبوعية نتخطى الرمز
                 continue
 
             gmin = min(wk, key=lambda x: x.get("strike", float("inf"))).get("strike")
             gmax = max(wk, key=lambda x: x.get("strike", float("-inf"))).get("strike")
-
             cls, typ = classify(sig_text)
             sig_html = f'<span class="chip {cls}">{sig_text}</span>'
 
             html += f"""
-                        <tr>
-                            <td><b>{sym}</b></td>
-                            <td>{sig_html}</td>
-                            <td class="{cls}">{typ}</td>
-                            <td>{gmin} → {gmax}</td>
-                            <td>{price:.2f}</td>
-                        </tr>
+                <tr>
+                    <td><b>{sym}</b></td>
+                    <td>{sig_html}</td>
+                    <td class="{cls}">{typ}</td>
+                    <td>{gmin} → {gmax}</td>
+                    <td>{credit_text}</td>
+                </tr>
             """
 
         html += f"""
                     </tbody>
                 </table>
-                <div class="muted">* نطاق الجاما محسوب من أعلى 7 مستويات أسبوعية مخزنة.</div>
+                <div class="muted">* نطاق الجاما محسوب من أعلى 7 مستويات أسبوعية.</div>
             </div>
 
             <footer>© {dt.datetime.now().year} Bassam Al-Faifi — All Rights Reserved</footer>
@@ -843,10 +834,15 @@ def report_pine_all():
         </html>
         """
 
+        os.makedirs("data", exist_ok=True)
+        with open("data/all.json", "w", encoding="utf-8") as f:
+            json.dump(all_data, f, ensure_ascii=False, indent=2)
+
         return Response(html, mimetype="text/html")
 
     except Exception as e:
         return jsonify({"error": str(e)})
+
 
 # ---------------------- /signals/json ----------------------
 @app.route("/signals/json")
