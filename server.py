@@ -780,7 +780,7 @@ def report_pine_all():
                     <tbody>
         """
 
-                for sym in symbols:
+        for sym in symbols:
             s = all_data.get(sym, {})
 
             # 🔸 نحصل على البيانات بأمان بغض النظر عن شكلها
@@ -822,8 +822,6 @@ def report_pine_all():
                     credit_text = (
                         f"📉 Call Credit Spread – بيع {short_leg}C وشراء {long_leg}C (تنتهي {expiry})"
                     )
-
-
 
 
             iv_now = s.get("signals", {}).get("current", {}).get("today", {}).get("iv_atm", 0)
