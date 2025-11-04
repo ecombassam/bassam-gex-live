@@ -863,7 +863,7 @@ for sym in symbols:
     """
 
 # ✅ هذا الجزء بعد حلقة الـ for مباشرة
-html += f"""
+html += """
         </tbody>
     </table>
     <div class="muted">* نطاق الجاما محسوب من أعلى 7 مستويات أسبوعية.</div>
