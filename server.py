@@ -778,37 +778,26 @@ def report_pine_all():
                         </tr>
                     </thead>
                     <tbody>
-        """
-
+        # ========================================
+        # 🔹 توليد صفوف التقرير (HTML Table Rows)
+        # ========================================
         for sym in symbols:
             s = all_data.get(sym, {})
 
-            # 🔸 نحصل على البيانات بأمان بغض النظر عن شكلها
+            # 🔸 حماية ضد البيانات غير المكتملة
             wcur = s.get("weekly_current", {})
             wk = []
             price = 0
             expiry = ""
 
             if isinstance(wcur, dict):
-                # ✅ يدعم الحقول الجديدة top7 أو picks أو حتى قائمة مباشرة
-                if "top7" in wcur:
-                    wk = wcur.get("top7", [])
-                elif "picks" in wcur:
-                    wk = wcur.get("picks", [])
-                elif isinstance(wcur, list):
-                    wk = wcur
-                else:
-                    wk = []
+                wk = wcur.get("picks", [])
                 price = wcur.get("price", 0)
                 expiry = wcur.get("expiry", "")
             elif isinstance(wcur, list):
                 wk = wcur
             else:
                 wk = []
-
-
-            # ⚙️ تأكد أن wk قائمة من قواميس تحتوي على strike
-            wk = [x for x in wk if isinstance(x, dict) and "strike" in x]
 
             sig_text = (
                 s.get("signals", {})
@@ -817,49 +806,68 @@ def report_pine_all():
                 .get("signal", "⚪ Neutral")
             )
 
-            # 🔹 حساب تغيّر IV
-            iv_now = s.get("signals", {}).get("current", {}).get("today", {}).get("iv_atm", 0)
-            iv_base = s.get("signals", {}).get("current", {}).get("base", {}).get("iv_atm", 0)
-            iv_change = ((iv_now - iv_base) / iv_base) * 100 if iv_base else 0
-
+            # -------------------------------
+            # 🔹 تحليل الصفقة المقترحة (Credit)
+            # -------------------------------
             credit_text = "—"
-            if wk and price and abs(iv_change) >= 5:
-                # 🧭 تحديد أقرب استرايك قوي
-                gammas = [x.get("net_gamma", 0) for x in wk]
-                max_gamma = max(abs(g) for g in gammas) if gammas else 0
-                strong_levels = [x for x in wk if abs(x.get("net_gamma", 0)) >= 0.3 * max_gamma]
-                if strong_levels:
-                    nearest = min(strong_levels, key=lambda x: abs(x["strike"] - price))
-                    base_strike = nearest["strike"]
+            note = "—"
 
-                    # 🟢 نوع الصفقة حسب الاتجاه
-                    if "📈" in sig_text or "Bull" in sig_text:
-                        short_leg = base_strike
-                        long_leg = base_strike - 5
-                        credit_text = f"📈 بيع {short_leg}P / شراء {long_leg}P (تنتهي {expiry})"
-                    elif "📉" in sig_text or "Bear" in sig_text:
-                        short_leg = base_strike
-                        long_leg = base_strike + 5
-                        credit_text = f"📉 بيع {short_leg}C / شراء {long_leg}C (تنتهي {expiry})"
+            if wk and price:
+                nearest = min(wk, key=lambda x: abs(x.get("strike", 0) - price))
+                base_strike = nearest.get("strike", 0)
+                net_gamma = nearest.get("net_gamma", 0)
 
-            # 🔸 لو ما في بيانات كافية، تجاوز الرمز
-            if not wk:
-                continue
+                if "📈" in sig_text or "Bull" in sig_text:
+                    short_leg = base_strike
+                    long_leg = base_strike - 5
+                    credit_text = f"📈 Put Credit Spread – بيع {short_leg}P / شراء {long_leg}P (تنتهي {expiry})"
+                    if net_gamma > 0:
+                        note = "📈 دعم قوي أسفل السعر – احتمال ارتداد"
+                    else:
+                        note = "⚠️ مراقبة الحركة – Gamma ضعيف حاليًا"
 
-            gmin = min(wk, key=lambda x: x.get("strike", float("inf"))).get("strike")
-            gmax = max(wk, key=lambda x: x.get("strike", float("-inf"))).get("strike")
+                elif "📉" in sig_text or "Bear" in sig_text:
+                    short_leg = base_strike
+                    long_leg = base_strike + 5
+                    credit_text = f"📉 Call Credit Spread – بيع {short_leg}C / شراء {long_leg}C (تنتهي {expiry})"
+                    if net_gamma < 0:
+                        note = "📉 Gamma سلبي قوي – ضغط بيعي محتمل"
+                    else:
+                        note = "⚠️ تأكيد الاتجاه غدًا بعد تحديث OI"
+
+                else:
+                    note = "⚪ إشارة محايدة – لم يتأكد الاتجاه بعد"
+
+            # -------------------------------
+            # 🔹 نطاق الجاما (Top7)
+            # -------------------------------
+            if wk:
+                gmin = min(wk, key=lambda x: x.get("strike", float("inf"))).get("strike", "")
+                gmax = max(wk, key=lambda x: x.get("strike", float("-inf"))).get("strike", "")
+                range_text = f"{gmin} → {gmax}"
+            else:
+                range_text = "—"
+
+            # -------------------------------
+            # 🔹 تصنيف الإشارة
+            # -------------------------------
             cls, typ = classify(sig_text)
             sig_html = f'<span class="chip {cls}">{sig_text}</span>'
 
+            # -------------------------------
+            # 🔹 صف الجدول (HTML Row)
+            # -------------------------------
             html += f"""
                 <tr>
                     <td><b>{sym}</b></td>
                     <td>{sig_html}</td>
                     <td class="{cls}">{typ}</td>
-                    <td>{gmin} → {gmax}</td>
+                    <td>{range_text}</td>
                     <td>{credit_text}</td>
+                    <td>{note}</td>
                 </tr>
             """
+
 
         html += f"""
                     </tbody>
