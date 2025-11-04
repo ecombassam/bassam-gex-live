@@ -783,7 +783,7 @@ def report_pine_all():
         for sym in symbols:
             s = all_data.get(sym, {})
             sig_text = s.get("signals", {}).get("current", {}).get("signal", {}).get("signal", "⚪ Neutral")
-            wk = s.get("weekly_current", {}).get("top7", [])
+            wk = s.get("weekly_current", {}).get("picks", [])
             price = s.get("weekly_current", {}).get("price", 0)
             iv_now = s.get("signals", {}).get("current", {}).get("today", {}).get("iv_atm", 0)
             iv_base = s.get("signals", {}).get("current", {}).get("base", {}).get("iv_atm", 0)
