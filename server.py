@@ -12,10 +12,13 @@ import os, json, datetime as dt, requests, time, math
 from flask import Flask, jsonify, Response
 
 app = Flask(__name__)
-os.makedirs("data", exist_ok=True)
 POLY_KEY  = (os.environ.get("POLYGON_API_KEY") or "").strip()
 BASE_SNAP = "https://api.polygon.io/v3/snapshot/options"
 TODAY     = dt.date.today
+os.makedirs("data", exist_ok=True)
+if not os.path.exists("data/all.json"):
+    with open("data/all.json", "w", encoding="utf-8") as f:
+        json.dump({"updated": None, "symbols": [], "data": {}}, f, ensure_ascii=False, indent=2)
 
 SYMBOLS = [
     "AAPL","META","MSFT","NVDA","TSLA","GOOGL","AMD",
