@@ -935,7 +935,42 @@ def warmup_cache():
             print(f"⚠️ Failed to cache {sym}: {e}")
     print("✅ Cache warm-up complete.")
 
+
+# 🔁 التحديث التلقائي كل ساعة
+def auto_refresh():
+    import time
+    while True:
+        try:
+            print("🕒 Auto-refresh started...")
+            for sym in SYMBOLS:
+                try:
+                    data = update_symbol_data(sym)
+                    if data:
+                        CACHE[sym] = data
+                        print(f"✅ Updated {sym}")
+                except Exception as e:
+                    print(f"⚠️ Failed to update {sym}: {e}")
+
+            # حفظ النسخة الكاملة إلى all.json
+            all_data = {s: CACHE.get(s, {}) for s in SYMBOLS}
+            os.makedirs("data", exist_ok=True)
+            with open("data/all.json", "w", encoding="utf-8") as f:
+                json.dump({
+                    "updated": dt.datetime.utcnow().isoformat() + "Z",
+                    "symbols": SYMBOLS,
+                    "data": all_data
+                }, f, ensure_ascii=False, indent=2)
+
+            print("💾 Saved auto-refresh snapshot.")
+        except Exception as e:
+            print(f"❌ Auto-refresh error: {e}")
+
+        # ⏰ انتظر ساعة قبل التحديث القادم
+        time.sleep(3600)
+
+
 if __name__ == "__main__":
     import threading
     threading.Thread(target=warmup_cache, daemon=True).start()
+    threading.Thread(target=auto_refresh, daemon=True).start()
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
