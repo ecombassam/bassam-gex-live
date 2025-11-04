@@ -869,7 +869,7 @@ html += f"""
     <div class="muted">* نطاق الجاما محسوب من أعلى 7 مستويات أسبوعية.</div>
 </div>
 
-<footer> {dt.datetime.now().year} Bassam Al-Faifi — All Rights Reserved</footer>
+<footer> {dt.datetime.now().year} Bassam Al-Faifi &mdash; All Rights Reserved</footer>
 </div>
 </body>
 </html>
