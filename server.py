@@ -798,6 +798,9 @@ def report_pine_all():
             else:
                 wk = []
 
+            # ⚙️ تأكد أن wk قائمة من قواميس تحتوي على strike
+            wk = [x for x in wk if isinstance(x, dict) and "strike" in x]
+
             sig_text = (
                 s.get("signals", {})
                 .get("current", {})
@@ -805,31 +808,14 @@ def report_pine_all():
                 .get("signal", "⚪ Neutral")
             )
 
-            credit_text = "—"
-            if wk and price:
-                nearest = min(wk, key=lambda x: abs(x.get("strike", 0) - price))
-                base_strike = nearest.get("strike", 0)
-
-                if "📈" in sig_text or "Bull" in sig_text:
-                    short_leg = base_strike
-                    long_leg = base_strike - 5
-                    credit_text = (
-                        f"📈 Put Credit Spread – بيع {short_leg}P وشراء {long_leg}P (تنتهي {expiry})"
-                    )
-                elif "📉" in sig_text or "Bear" in sig_text:
-                    short_leg = base_strike
-                    long_leg = base_strike + 5
-                    credit_text = (
-                        f"📉 Call Credit Spread – بيع {short_leg}C وشراء {long_leg}C (تنتهي {expiry})"
-                    )
-
-
+            # 🔹 حساب تغيّر IV
             iv_now = s.get("signals", {}).get("current", {}).get("today", {}).get("iv_atm", 0)
             iv_base = s.get("signals", {}).get("current", {}).get("base", {}).get("iv_atm", 0)
             iv_change = ((iv_now - iv_base) / iv_base) * 100 if iv_base else 0
 
-            credit_text = ""
-            if wk and abs(iv_change) >= 5:
+            credit_text = "—"
+            if wk and price and abs(iv_change) >= 5:
+                # 🧭 تحديد أقرب استرايك قوي
                 gammas = [x.get("net_gamma", 0) for x in wk]
                 max_gamma = max(abs(g) for g in gammas) if gammas else 0
                 strong_levels = [x for x in wk if abs(x.get("net_gamma", 0)) >= 0.3 * max_gamma]
@@ -837,15 +823,17 @@ def report_pine_all():
                     nearest = min(strong_levels, key=lambda x: abs(x["strike"] - price))
                     base_strike = nearest["strike"]
 
-                    if "📈" in sig_text:
+                    # 🟢 نوع الصفقة حسب الاتجاه
+                    if "📈" in sig_text or "Bull" in sig_text:
                         short_leg = base_strike
                         long_leg = base_strike - 5
-                        credit_text = f"📈 بيع {short_leg}P / شراء {long_leg}P"
-                    elif "📉" in sig_text:
+                        credit_text = f"📈 بيع {short_leg}P / شراء {long_leg}P (تنتهي {expiry})"
+                    elif "📉" in sig_text or "Bear" in sig_text:
                         short_leg = base_strike
                         long_leg = base_strike + 5
-                        credit_text = f"📉 بيع {short_leg}C / شراء {long_leg}C"
+                        credit_text = f"📉 بيع {short_leg}C / شراء {long_leg}C (تنتهي {expiry})"
 
+            # 🔸 لو ما في بيانات كافية، تجاوز الرمز
             if not wk:
                 continue
 
