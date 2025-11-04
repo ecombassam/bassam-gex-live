@@ -778,7 +778,7 @@ def report_pine_all():
                         </tr>
                     </thead>
         html += """
-                    <tbody>
+                <tbody>
         """
 
         # ========================================
