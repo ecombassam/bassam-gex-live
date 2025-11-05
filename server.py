@@ -712,6 +712,63 @@ draw_bars(_s, _p, _iv, _sgn) =>
 {''.join(blocks)}
 """
     return Response(pine, mimetype="text/plain")
+# ============================================================
+# 🧠 تقييم نوع الفرصة (Put / Call Credit) بناءً على ΔOI و Γ
+# ============================================================
+def evaluate_credit_opportunity(sig_text, delta_oi_calls, delta_oi_puts, delta_gamma):
+    """
+    يرجع نص الفرصة + الملاحظة بناءً على حركة السيولة وسلوك Gamma
+    """
+    # إذا لم تتوفر البيانات
+    if delta_oi_calls is None or delta_oi_puts is None or delta_gamma is None:
+        return "—", "⚪ بيانات غير مكتملة"
+
+    ratio = 0
+    if delta_oi_calls > 0 and math.isfinite(delta_oi_puts / delta_oi_calls):
+        ratio = delta_oi_puts / delta_oi_calls
+
+
+    # 📈 سيولة في PUTs = دعم
+    if ratio >= 1.3 and delta_gamma > 0:
+        return "✅ افتح Put Credit Spread", "📈 دعم مؤسسي قوي – احتمال ارتداد من الأسفل"
+
+    elif ratio >= 1.0 and delta_gamma < 0:
+        return "⚠️ لا تدخل الآن", "🔻 فتح مراكز بيع للتحوط أو مضاربة سلبية – انتظر تأكيد من السعر أو RSI"
+
+    elif delta_oi_calls < 0.1 and delta_oi_puts < 0.1:
+        return "🚫 لا صفقة اليوم", "⚪ لا يوجد تحرك حقيقي بالسيولة"
+
+    # 📉 سيولة في CALLs = ضغط بيعي
+    elif delta_oi_calls >= 1.3 * delta_oi_puts and delta_gamma < 0:
+        return "✅ افتح Call Credit Spread", "📉 ضغط بيعي مؤسسي – مقاومة قوية متوقعة"
+
+    elif delta_oi_calls >= 1.0 * delta_oi_puts and delta_gamma > 0:
+        return "⚠️ تجنب الدخول", "⚠️ ارتفاع مضاربي غير مستقر – احتمال ارتفاع مؤقت"
+
+    else:
+        return "—", "⚪ اتجاه السيولة غير واضح"
+# ============================================================
+# 🧾 سجل يومي للفرص المكتشفة (Credit Flow Log)
+# ============================================================
+def log_opportunity(symbol, credit_text, note, flow_signal):
+    log_path = "data/opportunities.json"
+    os.makedirs("data", exist_ok=True)
+    data = {}
+    if os.path.exists(log_path):
+        with open(log_path, "r", encoding="utf-8") as f:
+            try:
+                data = json.load(f)
+            except:
+                data = {}
+    entry = {
+        "timestamp": dt.datetime.utcnow().isoformat() + "Z",
+        "credit": credit_text,
+        "note": note,
+        "flow": flow_signal
+    }
+    data.setdefault(symbol, []).append(entry)
+    with open(log_path, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
 
 
 @app.route("/report/pine/all")
@@ -851,7 +908,7 @@ def report_pine_all():
                             <th>الرمز</th>
                             <th>الإشارة</th>
                             <th>نوع الصفقة</th>
-                            <th>نطاق الجاما (Top7)</th>
+                            <th>نطاق الجاما الاسبوعي (Top7)</th>
                             <th>الفرصة المقترحة</th>
                             <th>الملاحظة</th>
                             <th>اتجاه السيولة</th>
@@ -892,6 +949,27 @@ def report_pine_all():
             credit_text = "—"
             note = "—"
 
+            # 🔹 تحليل الفرصة حسب البيانات
+            sig = s.get("signals", {}).get("current", {}).get("signal", {})
+            sig_text = sig.get("signal", "⚪ Neutral")
+            
+            today = s.get("signals", {}).get("current", {}).get("today", {})
+            base = s.get("signals", {}).get("current", {}).get("base", {})
+
+            delta_oi_calls = (today.get("calls", 0) - base.get("calls", 0)) / max(base.get("calls", 1), 1)
+            delta_oi_puts  = (today.get("puts", 0) - base.get("puts", 0)) / max(base.get("puts", 1), 1)
+            delta_gamma    = 0
+            
+            wk = s.get("weekly_current", {}).get("picks", [])
+            if wk:
+                gammas = [x.get("net_gamma", 0) for x in wk if isinstance(x, dict)]
+                if gammas:
+                    delta_gamma = sum(gammas) / len(gammas)
+
+            # 🔍 تقييم الفرصة الذكية
+            credit_text, note = evaluate_credit_opportunity(sig_text, delta_oi_calls, delta_oi_puts, delta_gamma)
+            
+            
             if wk and price:
                 nearest = min(wk, key=lambda x: abs(x.get("strike", 0) - price))
                 base_strike = nearest.get("strike", 0)
@@ -933,6 +1011,8 @@ def report_pine_all():
                 flow_color = "bear"
 
             flow_html = f'<span class="chip {flow_color}">{flow_signal}</span>'
+            # 🔹 حفظ السجل اليومي
+            log_opportunity(sym, credit_text, note, flow_signal)
 
             # 🔹 صف الجدول مع عمود جديد لاتجاه السيولة
             html += f"""
@@ -963,7 +1043,12 @@ def report_pine_all():
 
         os.makedirs("data", exist_ok=True)
         with open("data/all.json", "w", encoding="utf-8") as f:
-            json.dump(all_data, f, ensure_ascii=False, indent=2)
+            json.dump({
+                "updated": updated_iso,
+                "symbols": symbols,
+                "data": all_data
+            }, f, ensure_ascii=False, indent=2)
+
 
         return Response(html, mimetype="text/html")
     except Exception as e:
