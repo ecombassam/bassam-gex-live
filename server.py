@@ -753,6 +753,7 @@ def evaluate_credit_opportunity(sig_text, delta_oi_calls, delta_oi_puts, delta_g
 def log_opportunity(symbol, credit_text, note, flow_signal):
     log_path = "data/opportunities.json"
     os.makedirs("data", exist_ok=True)
+    
     data = {}
     if os.path.exists(log_path):
         with open(log_path, "r", encoding="utf-8") as f:
@@ -760,20 +761,18 @@ def log_opportunity(symbol, credit_text, note, flow_signal):
                 data = json.load(f)
             except:
                 data = {}
+
     entry = {
         "timestamp": dt.datetime.utcnow().isoformat() + "Z",
         "credit": credit_text,
         "note": note,
         "flow": flow_signal
     }
-    data.setdefault(symbol, []).append(entry)
-    with open("data/all.json", "w", encoding="utf-8") as f:
-        json.dump({
-            "updated": dt.datetime.utcnow().isoformat() + "Z",
-            "symbols": SYMBOLS,
-            "data": all_data
-        }, f, ensure_ascii=False, indent=2)
 
+    data.setdefault(symbol, []).append(entry)
+
+    with open(log_path, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
 
 
 @app.route("/report/pine/all")
