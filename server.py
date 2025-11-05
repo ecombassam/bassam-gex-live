@@ -18,7 +18,6 @@ app = Flask(__name__)
 POLY_KEY  = (os.environ.get("POLYGON_API_KEY") or "").strip()
 BASE_SNAP = "https://api.polygon.io/v3/snapshot/options"
 TODAY     = dt.date.today
-os.makedirs(DATA_PATH, exist_ok=True)
 
 # إنشاء ملف all.json الافتراضي إذا ما كان موجود
 if not os.path.exists(f"{DATA_PATH}/all.json"):
@@ -368,29 +367,36 @@ def _aggregate_oi_iv(rows, expiry, ref_price=None):
     return {"calls": calls_oi, "puts": puts_oi, "iv_atm": iv_atm, "price": price}
 
 def _get_baseline(symbol, expiry):
-    sym_map = DAILY_BASE.get(symbol) or {}
-    rec = sym_map.get(expiry)
-    if rec:
-        last_ts = rec.get("timestamp")
-        if last_ts:
-            last_dt = dt.datetime.strptime(last_ts, "%Y-%m-%dT%H:%M")
-            # اعتبره صالحاً فقط لو لم يمر عليه أكثر من ساعة
-            if (dt.datetime.now() - last_dt).total_seconds() < 3600:
-                return rec  # baseline set within the last hour
+    """🔹 يرجع baseline ثابت لأسبوع كامل (يبدأ من الاثنين)"""
+    # تحديد بداية الأسبوع (الاثنين)
+    today = dt.date.today()
+    monday = today - dt.timedelta(days=today.weekday())
+    week_key = monday.isoformat()
 
-    return None
+    sym_map = DAILY_BASE.get(symbol, {}).get(expiry, {})
+    return sym_map.get(week_key)
+
 
 def _set_baseline(symbol, expiry, agg):
+    """🔹 يحفظ baseline مرة واحدة في بداية الأسبوع"""
     DAILY_BASE.setdefault(symbol, {})
-    day_key = dt.date.today().isoformat()  # مفتاح اليوم مثل "2025-11-05"
     DAILY_BASE[symbol].setdefault(expiry, {})
-    DAILY_BASE[symbol][expiry][day_key] = {
-        "timestamp": dt.datetime.now().strftime("%Y-%m-%dT%H:00"),
-        "calls": float(agg["calls"] or 0.0),
-        "puts":  float(agg["puts"]  or 0.0),
-        "iv_atm": float(agg["iv_atm"] or 0.0)
-    }
-    save_baseline()
+
+    # 🔸 المفتاح الأسبوعي (أول يوم في الأسبوع)
+    today = dt.date.today()
+    monday = today - dt.timedelta(days=today.weekday())
+    week_key = monday.isoformat()
+
+    # لو baseline محفوظ لهذا الأسبوع لا تعيد إنشاءه
+    if week_key not in DAILY_BASE[symbol][expiry]:
+        DAILY_BASE[symbol][expiry][week_key] = {
+            "timestamp": dt.datetime.now().strftime("%Y-%m-%dT%H:%M"),
+            "calls": float(agg["calls"] or 0.0),
+            "puts":  float(agg["puts"]  or 0.0),
+            "iv_atm": float(agg["iv_atm"] or 0.0)
+        }
+        save_baseline()
+
 
 def _detect_credit_signal(today_agg, base_agg):
     """
