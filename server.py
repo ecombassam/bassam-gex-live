@@ -767,8 +767,13 @@ def log_opportunity(symbol, credit_text, note, flow_signal):
         "flow": flow_signal
     }
     data.setdefault(symbol, []).append(entry)
-    with open(log_path, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
+    with open("data/all.json", "w", encoding="utf-8") as f:
+        json.dump({
+            "updated": dt.datetime.utcnow().isoformat() + "Z",
+            "symbols": SYMBOLS,
+            "data": all_data
+        }, f, ensure_ascii=False, indent=2)
+
 
 
 @app.route("/report/pine/all")
@@ -1177,6 +1182,20 @@ def auto_refresh():
 
         # ⏰ انتظر ساعة قبل التحديث القادم
         time.sleep(3600)
+# ---------------------- /opportunities/json ----------------------
+@app.route("/opportunities/json")
+def opportunities_json():
+    """📊 عرض ملف سجل الفرص اليومية عبر المتصفح"""
+    try:
+        log_path = "data/opportunities.json"
+        if not os.path.exists(log_path):
+            return jsonify({"status": "empty", "message": "لم يتم إنشاء أي فرص بعد."})
+        with open(log_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return jsonify({"status": "OK", "count": len(data), "data": data})
+    except Exception as e:
+        return jsonify({"error": str(e)})
+
 
 
 if __name__ == "__main__":
