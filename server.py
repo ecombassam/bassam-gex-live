@@ -955,19 +955,26 @@ def report_pine_all():
             expiry = wcur.get("expiry", "") if isinstance(wcur, dict) else ""
 
 
-            sig_data = s.get("signals", {})
-            if isinstance(sig_data, list):
-                sig_data = sig_data[0] if sig_data and isinstance(sig_data[0], dict) else {}
+            # 🔹 معالجة آمنة لتفادي الخطأ (list has no attribute 'get')
+            sig_text = "⚪ Neutral"
+            try:
+                sig_data = s.get("signals", {})
+                if isinstance(sig_data, list):
+                    sig_data = sig_data[0] if sig_data and isinstance(sig_data[0], dict) else {}
 
-            curr = sig_data.get("current", {})
-            if isinstance(curr, list):
-                curr = curr[0] if curr and isinstance(curr[0], dict) else {}
-            
-            sig_block = curr.get("signal", {})
-            if isinstance(sig_block, list):
-                sig_block = sig_block[0] if sig_block and isinstance(sig_block[0], dict) else {}
-            
-            sig_text = sig_block.get("signal", "⚪ Neutral")
+                curr = sig_data.get("current", {})
+                if isinstance(curr, list):
+                    curr = curr[0] if curr and isinstance(curr[0], dict) else {}
+
+                sig_block = curr.get("signal", {})
+                if isinstance(sig_block, list):
+                    sig_block = sig_block[0] if sig_block and isinstance(sig_block[0], dict) else {}
+
+                sig_text = sig_block.get("signal", "⚪ Neutral")
+            except Exception as e:
+                print(f"[WARN] Signal parse error for {sym}: {e}")
+                sig_text = "⚪ Neutral"
+
 
 
             # 🔹 تحليل الصفقة المقترحة
