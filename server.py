@@ -403,6 +403,64 @@ def _detect_credit_signal(today_agg, base_agg):
         "iv_rate":   round(iv_rate, 4),
         "explain":   "rules-v1"
     }
+# ---------------------- Flow Tracking (ΔOI + ΔGamma) ----------------------
+def track_flow(symbol, rows, prev_data):
+    """
+    🔍 يحلل تحركات السيولة بين التحديث الحالي والسابق.
+    prev_data = بيانات آخر Snapshot من data/all.json
+    """
+    try:
+        price = None
+        for r in rows:
+            p = r.get("underlying_asset", {}).get("price")
+            if isinstance(p, (int, float)):
+                price = float(p)
+                break
+
+        if price is None:
+            return {"status": "no-price"}
+
+        # 🔹 بناء خريطة OI + Gamma الحالية
+        flow_map = {}
+        for r in rows:
+            det = r.get("details", {})
+            strike = det.get("strike_price")
+            ctype = det.get("contract_type")
+            oi = r.get("open_interest") or 0
+            gamma = (r.get("greeks") or {}).get("gamma", 0)
+            if not isinstance(strike, (int, float)):
+                continue
+            key = f"{ctype}_{int(strike)}"
+            flow_map[key] = {"oi": oi, "gamma": gamma}
+
+        # 🔹 مقارنة مع البيانات السابقة
+        changes = []
+        old = prev_data.get("flow", {}) if isinstance(prev_data, dict) else {}
+        for key, v in flow_map.items():
+            old_v = old.get(key, {"oi": 0, "gamma": 0})
+            d_oi = v["oi"] - old_v.get("oi", 0)
+            d_gm = v["gamma"] - old_v.get("gamma", 0)
+            if abs(d_oi) > 50:  # تجاهل تغيرات بسيطة
+                changes.append({"strike": key, "d_oi": round(d_oi, 2), "d_gamma": round(d_gm, 6)})
+
+        # 🔹 تحليل الاتجاه
+        puts_up = sum(c["d_oi"] for c in changes if "put" in c["strike"].lower() and c["d_oi"] > 0)
+        calls_up = sum(c["d_oi"] for c in changes if "call" in c["strike"].lower() and c["d_oi"] > 0)
+
+        flow_signal = "⚪ محايد"
+        if puts_up > calls_up * 1.3:
+            flow_signal = "📈 تدفق سيولة إلى عقود PUT (دعم السوق)"
+        elif calls_up > puts_up * 1.3:
+            flow_signal = "📉 تدفق سيولة إلى عقود CALL (ضغط بيعي)"
+
+        return {
+            "flow_signal": flow_signal,
+            "puts_up": puts_up,
+            "calls_up": calls_up,
+            "flow": flow_map
+        }
+    except Exception as e:
+        return {"error": str(e)}
 
 # -------------------- Update + Cache -----------------------
 def update_symbol_data(symbol):
@@ -454,6 +512,18 @@ def update_symbol_data(symbol):
         "signals": signals,
         "timestamp": time.time()
     }
+    # 🔄 تحليل تدفق السيولة (Flow)
+    prev = {}
+    try:
+        with open("data/all.json", "r", encoding="utf-8") as f:
+            prev_file = json.load(f)
+            prev = (prev_file.get("data", {}).get(symbol, {}) or {})
+    except:
+        pass
+
+    flow_result = track_flow(symbol, rows, prev)
+    data["flow"] = flow_result
+
     earn_date = get_next_earnings(symbol)
     data["earnings_date"] = earn_date
     return data
@@ -784,6 +854,8 @@ def report_pine_all():
                             <th>نطاق الجاما (Top7)</th>
                             <th>الفرصة المقترحة</th>
                             <th>الملاحظة</th>
+                            <th>اتجاه السيولة</th>
+
                         </tr>
                     </thead>
         """
@@ -852,6 +924,17 @@ def report_pine_all():
             sig_html = f'<span class="chip {cls}">{sig_text}</span>'
 
             # 🔹 صف الجدول
+            # 🔹 اتجاه السيولة (Flow)
+            flow_signal = s.get("flow", {}).get("flow_signal", "—")
+            flow_color = "neutral"
+            if "PUT" in flow_signal or "📈" in flow_signal:
+                flow_color = "bull"
+            elif "CALL" in flow_signal or "📉" in flow_signal:
+                flow_color = "bear"
+
+            flow_html = f'<span class="chip {flow_color}">{flow_signal}</span>'
+
+            # 🔹 صف الجدول مع عمود جديد لاتجاه السيولة
             html += f"""
                 <tr>
                     <td><b>{sym}</b></td>
@@ -860,8 +943,10 @@ def report_pine_all():
                     <td>{range_text}</td>
                     <td>{credit_text}</td>
                     <td>{note}</td>
+                    <td>{flow_html}</td>
                 </tr>
             """
+
 
         # ✅ إغلاق HTML بالكامل
         html += f"""
