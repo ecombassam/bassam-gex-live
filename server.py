@@ -648,7 +648,6 @@ draw_bars(_s, _p, _iv, _sgn) =>
 def report_pine_all():
     """تقرير شامل لجميع الشركات (Credit Monitor Report) مع إظهار وقت آخر تحديث البيانات"""
     try:
-        import datetime as dt
         now_hhmm = dt.datetime.now().strftime("%Y-%m-%d %H:%M")
         with open("data/all.json", "r", encoding="utf-8") as f:
             data = json.load(f)
@@ -856,15 +855,15 @@ def report_pine_all():
 
         # ✅ إغلاق HTML بالكامل
         html += f"""
-                    </tbody>
-                </table>
-                <div class="muted">* نطاق الجاما محسوب من أعلى 7 مستويات أسبوعية.</div>
-            </div>
-
-            <footer>© {dt.datetime.now().year} Bassam Al-Faifi — All Rights Reserved</footer>
+                </tbody>
+            </table>
+            <div class="muted">* نطاق الجاما محسوب من أعلى 7 مستويات أسبوعية.</div>
         </div>
-        </body>
-        </html>
+
+        <footer>© {dt.datetime.now().year} Bassam Al-Faifi — All Rights Reserved</footer>
+    </div>
+    </body>
+    </html>
         """
 
         os.makedirs("data", exist_ok=True)
@@ -872,7 +871,6 @@ def report_pine_all():
             json.dump(all_data, f, ensure_ascii=False, indent=2)
 
         return Response(html, mimetype="text/html")
-
     except Exception as e:
         return jsonify({"error": str(e)})
 
