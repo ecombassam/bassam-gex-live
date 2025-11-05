@@ -1135,20 +1135,23 @@ def report_pine_all():
     </html>
         """
 
+        # 🔹 حفظ البيانات بعد توليد التقرير مع توقيت الرياض
+        now = dt.datetime.now(dt.timezone(dt.timedelta(hours=3)))
+        updated_time = now.strftime("%Y-%m-%d %H:%M:%S")
+        
         os.makedirs("data", exist_ok=True)
         with open("data/all.json", "w", encoding="utf-8") as f:
             json.dump({
-                "updated": updated_iso,
-                "symbols": symbols,
+                "updated": updated_time,
+                "symbols": SYMBOLS,
                 "data": all_data
             }, f, ensure_ascii=False, indent=2)
+
 
 
         return Response(html, mimetype="text/html")
     except Exception as e:
         return jsonify({"error": str(e)})
-
-
 
 
 # ---------------------- /signals/json ----------------------
@@ -1240,36 +1243,44 @@ def warmup_cache():
     print("✅ Cache warm-up complete.")
 
 
-# 🔁 التحديث التلقائي كل ساعة
+# 🔁 التحديث التلقائي كل ساعة (بتوقيت الرياض)
 def auto_refresh():
     import time
     while True:
         try:
-            print("🕒 Auto-refresh started...")
+            now_r = dt.datetime.now(dt.timezone(dt.timedelta(hours=3)))
+            print(f"🕒 Auto-refresh started at {now_r.strftime('%Y-%m-%d %H:%M:%S')} (Riyadh time)")
+
+            updated_all = {}
             for sym in SYMBOLS:
                 try:
                     data = update_symbol_data(sym)
                     if data:
                         CACHE[sym] = data
+                        updated_all[sym] = data
                         print(f"✅ Updated {sym}")
+                    else:
+                        print(f"⚠️ No data returned for {sym}")
                 except Exception as e:
-                    print(f"⚠️ Failed to update {sym}: {e}")
+                    print(f"❌ Failed to update {sym}: {e}")
 
-            # حفظ النسخة الكاملة إلى all.json
-            all_data = {s: CACHE.get(s, {}) for s in SYMBOLS}
+            # 🧠 حفظ النسخة الكاملة إلى all.json
             os.makedirs("data", exist_ok=True)
+            updated_time = now_r.strftime("%Y-%m-%d %H:%M:%S")
+
             with open("data/all.json", "w", encoding="utf-8") as f:
                 json.dump({
-                    "updated": dt.datetime.utcnow().isoformat() + "Z",
+                    "updated": updated_time,
                     "symbols": SYMBOLS,
-                    "data": all_data
+                    "data": updated_all
                 }, f, ensure_ascii=False, indent=2)
 
-            print("💾 Saved auto-refresh snapshot.")
+            print(f"💾 Saved auto-refresh snapshot at {updated_time} (Riyadh).")
         except Exception as e:
             print(f"❌ Auto-refresh error: {e}")
 
         # ⏰ انتظر ساعة قبل التحديث القادم
+        print("⏳ Waiting 1 hour for next refresh...\n")
         time.sleep(3600)
 # ---------------------- /opportunities/json ----------------------
 @app.route("/opportunities/json")
@@ -1289,7 +1300,26 @@ def opportunities_json():
 
 if __name__ == "__main__":
     load_baseline()  # 🔹 استرجاع الخط الأساسي عند الإقلاع
+
+    # 🔁 تحميل الكاش مبدئيًا
     import threading
     threading.Thread(target=warmup_cache, daemon=True).start()
     threading.Thread(target=auto_refresh, daemon=True).start()
+
+    # 🧠 حفظ أول نسخة مباشرة بعد التشغيل
+    try:
+        now_r = dt.datetime.now(dt.timezone(dt.timedelta(hours=3)))
+        updated_time = now_r.strftime("%Y-%m-%d %H:%M:%S")
+        os.makedirs("data", exist_ok=True)
+        with open("data/all.json", "w", encoding="utf-8") as f:
+            json.dump({
+                "updated": updated_time,
+                "symbols": SYMBOLS,
+                "data": CACHE
+            }, f, ensure_ascii=False, indent=2)
+        print(f"✅ Initial snapshot saved at startup ({updated_time} Riyadh).")
+    except Exception as e:
+        print(f"⚠️ Initial snapshot save failed: {e}")
+
+    # 🚀 تشغيل السيرفر
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
