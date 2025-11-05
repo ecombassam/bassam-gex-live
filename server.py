@@ -949,7 +949,6 @@ def report_pine_all():
         # 🩷 محاولة قراءة المفاتيح الأساسية
         updated_iso = data.get("updated") or ""
         updated_display = updated_iso if updated_iso else "غير متوفر"
-
         symbols = data.get("symbols", [])
         all_data = data.get("data", {})
 
@@ -962,15 +961,9 @@ def report_pine_all():
                     fixed[entry["symbol"]] = entry
             all_data = fixed
 
-        # ✨ بعد هذا الجزء، يكمّل كودك الأصلي للتقرير
-        # (توليد الجدول أو الـ HTML كما في نسختك السابقة)
-        # ...
-
-    except Exception as e:
-        return jsonify({"error": str(e)})
-
-
-
+        # -----------------------------------------------
+        # 🟢 من هنا يبدأ الكود الأساسي (داخل try)
+        # -----------------------------------------------
         def classify(sig_text: str):
             s = (sig_text or "").strip()
             if "Bull" in s or "Put" in s or "📈" in s:
