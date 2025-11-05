@@ -1166,7 +1166,7 @@ def report_pine_all():
             delta_oi_puts  = (today.get("puts", 0) - base.get("puts", 0)) / max(base.get("puts", 1), 1)
             delta_gamma    = 0
             
-            wk = s.get("weekly_current", {}).get("picks", [])
+            wk = s.get("weekly_current", {}).get("top7", [])
             if wk:
                 gammas = [x.get("net_gamma", 0) for x in wk if isinstance(x, dict)]
                 if gammas:
