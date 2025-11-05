@@ -652,6 +652,15 @@ def report_pine_all():
         with open("data/all.json", "r", encoding="utf-8") as f:
             data = json.load(f)
 
+        # 🩵 حماية من الخطأ إذا الملف كان list بدل dict
+        if isinstance(data, list):
+            # لو الملف يحتوي قائمة، نحاول نأخذ أول عنصر (قاموس) منها
+            if len(data) > 0 and isinstance(data[0], dict):
+                data = data[0]
+            else:
+                data = {"updated": None, "symbols": [], "data": {}}
+
+
         updated_iso = data.get("updated") or ""
         updated_display = updated_iso if updated_iso else "غير متوفر"
 
