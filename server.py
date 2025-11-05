@@ -927,8 +927,17 @@ def report_pine_all():
         # ========================================
         for sym in symbols:
             s = all_data.get(sym, {})
+        
+            # 🔒 حماية إضافية ضد البيانات غير الصالحة (list بدل dict)
+            if isinstance(s, list):
+                if len(s) > 0 and isinstance(s[0], dict):
+                    s = s[0]
+                else:
+                    s = {}
+
             # 🔸 حماية ضد البيانات غير المكتملة
             wcur = s.get("weekly_current", {})
+
             wk = []
             price = 0
             expiry = ""
