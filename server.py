@@ -928,28 +928,32 @@ def report_pine_all():
         for sym in symbols:
             s = all_data.get(sym, {})
         
-            # 🔒 حماية إضافية ضد البيانات غير الصالحة (list بدل dict)
+            # 🩵 حماية ذكية ضد بيانات غير صالحة (list أو dict)
             if isinstance(s, list):
                 if len(s) > 0 and isinstance(s[0], dict):
                     s = s[0]
                 else:
+                    # ❗ في حال بيانات السهم فارغة أو خاطئة
+                    print(f"[WARN] {sym} has invalid data structure → resetting.")
                     s = {}
 
-            # 🔸 حماية ضد البيانات غير المكتملة
-            wcur = s.get("weekly_current", {})
+            elif not isinstance(s, dict):
+                print(f"[WARN] {sym} data type = {type(s)}, expected dict → resetting.")
+                s = {}
 
-            wk = []
-            price = 0
-            expiry = ""
+            # 🟢 حماية ضد العناصر الداخلية المفقودة
+            wcur = s.get("weekly_current") or {}
+            signals = s.get("signals") or {}
+            flow_data = s.get("flow") or {}
 
-            if isinstance(wcur, dict):
-                wk = wcur.get("picks", [])
-                price = wcur.get("price", 0)
-                expiry = wcur.get("expiry", "")
-            elif isinstance(wcur, list):
-                wk = wcur
-            else:
-                wk = []
+            if not isinstance(wcur, dict): wcur = {}
+            if not isinstance(signals, dict): signals = {}
+            if not isinstance(flow_data, dict): flow_data = {}
+
+            wk = wcur.get("picks", []) if isinstance(wcur, dict) else []
+            price = wcur.get("price", 0) if isinstance(wcur, dict) else 0
+            expiry = wcur.get("expiry", "") if isinstance(wcur, dict) else ""
+
 
             sig_text = (
                 s.get("signals", {})
