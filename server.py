@@ -374,7 +374,9 @@ def _get_baseline(symbol, expiry):
 
 def _set_baseline(symbol, expiry, agg):
     DAILY_BASE.setdefault(symbol, {})
-    DAILY_BASE[symbol][expiry] = {
+    day_key = dt.date.today().isoformat()  # مفتاح اليوم مثل "2025-11-05"
+    DAILY_BASE[symbol].setdefault(expiry, {})
+    DAILY_BASE[symbol][expiry][day_key] = {
         "timestamp": dt.datetime.now().strftime("%Y-%m-%dT%H:00"),
         "calls": float(agg["calls"] or 0.0),
         "puts":  float(agg["puts"]  or 0.0),
