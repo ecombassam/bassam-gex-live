@@ -256,34 +256,74 @@ def _aggregate_gamma_by_strike(rows, price, split_by_price=True):
     return calls_map, puts_map
 
 def _pick_top7_directional(calls_map, puts_map):
+    """🔹 استخراج أقوى 7 مستويات Gamma باتجاه السوق مع حماية كاملة من البيانات الفارغة"""
     all_items = []
+
+    # 🧩 تجميع جميع القيم من calls و puts
     for s, v in calls_map.items():
-        all_items.append((float(s), float(v["net_gamma"]), float(v["iv"])))
+        try:
+            all_items.append((float(s), float(v.get("net_gamma", 0)), float(v.get("iv", 0))))
+        except Exception:
+            continue
     for s, v in puts_map.items():
-        all_items.append((float(s), float(v["net_gamma"]), float(v["iv"])))
-    if not all_items: return []
-    max_abs = max(abs(x[1]) for x in all_items) or 1.0
+        try:
+            all_items.append((float(s), float(v.get("net_gamma", 0)), float(v.get("iv", 0))))
+        except Exception:
+            continue
+
+    # 🧠 حماية من الحالة الفارغة
+    if not all_items:
+        print("[WARN] _pick_top7_directional: empty gamma data, skipping symbol")
+        return []
+
+    # 🔹 حساب أقصى قيمة مطلقة بأمان
+    try:
+        max_abs = max(abs(x[1]) for x in all_items) or 1.0
+    except ValueError:
+        print("[WARN] _pick_top7_directional: failed to compute max_abs, skipping")
+        return []
+
+    # 📊 فلترة المستويات الضعيفة
     all_items = [x for x in all_items if abs(x[1]) >= 0.2 * max_abs]
+
     pos = [t for t in all_items if t[1] > 0]
     neg = [t for t in all_items if t[1] < 0]
+
     pos_sorted = sorted(pos, key=lambda x: x[1], reverse=True)
     neg_sorted = sorted(neg, key=lambda x: x[1])
+
     top_pos = pos_sorted[:3]
     top_neg = neg_sorted[:3]
-    strongest = max(all_items, key=lambda x: abs(x[1]))
+
+    # 🧩 أقوى مستوى مطلقًا (مع حماية إضافية)
+    try:
+        strongest = max(all_items, key=lambda x: abs(x[1]))
+    except ValueError:
+        strongest = (0.0, 0.0, 0.0)
+
+    # 🧠 دمج النتائج بدون تكرار
     sel, seen = [], set()
+
     def _add_unique(items):
         for (s, g, iv) in items:
             key = (round(s, 6), round(g, 6))
             if key not in seen:
-                sel.append((s, g, iv)); seen.add(key)
-    _add_unique(top_pos); _add_unique([strongest]); _add_unique(top_neg)
+                sel.append((s, g, iv))
+                seen.add(key)
+
+    _add_unique(top_pos)
+    _add_unique([strongest])
+    _add_unique(top_neg)
+
+    # 💪 تعويض لو أقل من 7 عناصر
     if len(sel) < 7:
-        remaining = [x for x in all_items if (round(x[0],6), round(x[1],6)) not in seen]
+        remaining = [x for x in all_items if (round(x[0], 6), round(x[1], 6)) not in seen]
         remaining_sorted = sorted(remaining, key=lambda x: abs(x[1]), reverse=True)
         for x in remaining_sorted:
-            if len(sel) >= 7: break
+            if len(sel) >= 7:
+                break
             _add_unique([x])
+
     return sorted(sel, key=lambda x: x[0])[:7]
 
 # ----------------- Net Gamma + IV analysis -----------------
