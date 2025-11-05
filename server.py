@@ -11,19 +11,22 @@
 import os, json, datetime as dt, requests, time, math
 from flask import Flask, jsonify, Response
 
+DATA_PATH = "/opt/render/project/src/data"
+os.makedirs(DATA_PATH, exist_ok=True)
+
 app = Flask(__name__)
 POLY_KEY  = (os.environ.get("POLYGON_API_KEY") or "").strip()
 BASE_SNAP = "https://api.polygon.io/v3/snapshot/options"
 TODAY     = dt.date.today
-os.makedirs("data", exist_ok=True)
+os.makedirs(DATA_PATH, exist_ok=True)
 
 # إنشاء ملف all.json الافتراضي إذا ما كان موجود
-if not os.path.exists("data/all.json"):
-    with open("data/all.json", "w", encoding="utf-8") as f:
+if not os.path.exists(f"{DATA_PATH}/all.json"):
+    with open(f"{DATA_PATH}/all.json", "w", encoding="utf-8") as f:
         json.dump({"updated": None, "symbols": [], "data": {}}, f, ensure_ascii=False, indent=2)
 
 # 🔹 إنشاء ملف الفرص إذا غير موجود (يمنع رسالة "لم يتم إنشاء أي فرص بعد.")
-open("data/opportunities.json", "a").close()
+open(f"{DATA_PATH}/opportunities.json", "a").close()
 
 
 SYMBOLS = [
@@ -37,8 +40,7 @@ CACHE_EXPIRY = 3600  # 1h
 # ⏱️ Baselines (نحفظ خط أساس يومي للمقارنة Δ)
 # structure: DAILY_BASE[symbol][expiry] = {"date":"YYYY-MM-DD","calls":x,"puts":y,"iv_atm":z}
 DAILY_BASE = {}
-BASELINE_PATH = "data/baseline.json"
-
+BASELINE_PATH = f"{DATA_PATH}/baseline.json"
 def load_baseline():
     global DAILY_BASE
     if os.path.exists(BASELINE_PATH):
@@ -49,7 +51,7 @@ def load_baseline():
             DAILY_BASE = {}
 
 def save_baseline():
-    os.makedirs("data", exist_ok=True)
+    os.makedirs(DATA_PATH, exist_ok=True)
     with open(BASELINE_PATH, "w", encoding="utf-8") as f:
         json.dump(DAILY_BASE, f, ensure_ascii=False, indent=2)
 
@@ -539,7 +541,7 @@ def update_symbol_data(symbol):
     # 🔄 تحليل تدفق السيولة (Flow)
     prev = {}
     try:
-        with open("data/all.json", "r", encoding="utf-8") as f:
+        with open(f"{DATA_PATH}/all.json", "r", encoding="utf-8") as f:
             prev_file = json.load(f)
             prev = (prev_file.get("data", {}).get(symbol, {}) or {})
     except:
@@ -819,8 +821,8 @@ def evaluate_credit_opportunity(sig_text, delta_oi_calls, delta_oi_puts, delta_g
 # 🧾 سجل يومي للفرص المكتشفة (Credit Flow Log)
 # ============================================================
 def log_opportunity(symbol, credit_text, note, flow_signal):
-    log_path = "data/opportunities.json"
-    os.makedirs("data", exist_ok=True)
+    log_path = f"{DATA_PATH}/opportunities.json"
+    os.makedirs(DATA_PATH, exist_ok=True)
     
     data = {}
     if os.path.exists(log_path):
@@ -848,7 +850,7 @@ def report_pine_all():
     """تقرير شامل لجميع الشركات (Credit Monitor Report) مع إظهار وقت آخر تحديث البيانات"""
     try:
         now_hhmm = dt.datetime.now().strftime("%Y-%m-%d %H:%M")
-        with open("data/all.json", "r", encoding="utf-8") as f:
+        with open(f"{DATA_PATH}/all.json", "r", encoding="utf-8") as f:
             data = json.load(f)
 
         # 🩵 حماية من الخطأ إذا الملف كان list بدل dict
@@ -1149,8 +1151,8 @@ def report_pine_all():
         now = dt.datetime.now(dt.timezone(dt.timedelta(hours=3)))
         updated_time = now.strftime("%Y-%m-%d %H:%M:%S")
         
-        os.makedirs("data", exist_ok=True)
-        with open("data/all.json", "w", encoding="utf-8") as f:
+        os.makedirs(DATA_PATH, exist_ok=True)
+        with open(f"{DATA_PATH}/all.json", "w", encoding="utf-8") as f:
             json.dump({
                 "updated": updated_time,
                 "symbols": SYMBOLS,
@@ -1275,10 +1277,10 @@ def auto_refresh():
                     print(f"❌ Failed to update {sym}: {e}")
 
             # 🧠 حفظ النسخة الكاملة إلى all.json
-            os.makedirs("data", exist_ok=True)
+            os.makedirs(DATA_PATH, exist_ok=True)
             updated_time = now_r.strftime("%Y-%m-%d %H:%M:%S")
 
-            with open("data/all.json", "w", encoding="utf-8") as f:
+            with open(f"{DATA_PATH}/all.json", "w", encoding="utf-8") as f:
                 json.dump({
                     "updated": updated_time,
                     "symbols": SYMBOLS,
@@ -1297,7 +1299,7 @@ def auto_refresh():
 def opportunities_json():
     """📊 عرض ملف سجل الفرص اليومية عبر المتصفح"""
     try:
-        log_path = "data/opportunities.json"
+        log_path = f"{DATA_PATH}/opportunities.json"
         if not os.path.exists(log_path):
             return jsonify({"status": "empty", "message": "لم يتم إنشاء أي فرص بعد."})
         with open(log_path, "r", encoding="utf-8") as f:
@@ -1320,8 +1322,8 @@ if __name__ == "__main__":
     try:
         now_r = dt.datetime.now(dt.timezone(dt.timedelta(hours=3)))
         updated_time = now_r.strftime("%Y-%m-%d %H:%M:%S")
-        os.makedirs("data", exist_ok=True)
-        with open("data/all.json", "w", encoding="utf-8") as f:
+        os.makedirs(DATA_PATH, exist_ok=True)
+        with open(f"{DATA_PATH}/all.json", "w", encoding="utf-8") as f:
             json.dump({
                 "updated": updated_time,
                 "symbols": SYMBOLS,
