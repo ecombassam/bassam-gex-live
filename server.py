@@ -884,28 +884,36 @@ def log_opportunity(symbol, credit_text, note, flow_signal):
 
 @app.route("/report/pine/all")
 def report_pine_all():
-    """تقرير شامل لجميع الشركات (Credit Monitor Report) مع إظهار وقت آخر تحديث البيانات"""
+    """تقرير شامل لجميع الشركات (Credit Monitor Report) مع إصلاح تلقائي للبيانات وحماية من تلف الملفات"""
+
     try:
         now_hhmm = dt.datetime.now().strftime("%Y-%m-%d %H:%M")
+
+        # 🧠 تحميل البيانات بأمان
         with open(f"{DATA_PATH}/all.json", "r", encoding="utf-8") as f:
             data = json.load(f)
 
         # 🩵 حماية من الخطأ إذا الملف كان list بدل dict
         if isinstance(data, list):
-            # لو الملف يحتوي قائمة، نحاول نأخذ أول عنصر (قاموس) منها
+            print("[WARN] all.json is list, converting to dict structure...")
             if len(data) > 0 and isinstance(data[0], dict):
                 data = data[0]
             else:
                 data = {"updated": None, "symbols": [], "data": {}}
 
+        # 🩶 إصلاح إضافي لو كانت المفاتيح مفقودة
+        if not isinstance(data, dict):
+            print("[WARN] all.json invalid structure, resetting to safe defaults...")
+            data = {"updated": None, "symbols": [], "data": {}}
 
+        # 🩷 محاولة قراءة المفاتيح الأساسية
         updated_iso = data.get("updated") or ""
         updated_display = updated_iso if updated_iso else "غير متوفر"
 
         symbols = data.get("symbols", [])
         all_data = data.get("data", {})
 
-        # 🩵 إصلاح تلقائي لو كانت البيانات غير منظمة (list بدل dict)
+        # 💚 إصلاح تلقائي لو كانت البيانات غير منظمة (list بدل dict)
         if isinstance(all_data, list):
             print("[WARN] all_data was list, fixing structure...")
             fixed = {}
@@ -913,6 +921,14 @@ def report_pine_all():
                 if isinstance(entry, dict) and "symbol" in entry:
                     fixed[entry["symbol"]] = entry
             all_data = fixed
+
+        # ✨ بعد هذا الجزء، يكمّل كودك الأصلي للتقرير
+        # (توليد الجدول أو الـ HTML كما في نسختك السابقة)
+        # ...
+
+    except Exception as e:
+        return jsonify({"error": str(e)})
+
 
 
         def classify(sig_text: str):
