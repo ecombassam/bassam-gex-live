@@ -988,7 +988,11 @@ def report_pine_all():
         # 🔹 توليد صفوف التقرير (HTML Table Rows)
         # ========================================
         for sym in symbols:
-            s = all_data.get(sym, {})
+            s = all_data.get(sym)
+            if not isinstance(s, dict):
+                print(f"[WARN] {sym} invalid data type ({type(s)}), resetting...")
+                s = {}
+
         
             # 🩵 حماية ذكية ضد بيانات غير صالحة (list أو dict)
             if isinstance(s, list):
