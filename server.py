@@ -14,6 +14,37 @@ from flask import Flask, jsonify, Response
 DATA_PATH = "/opt/render/project/src/data"
 os.makedirs(DATA_PATH, exist_ok=True)
 
+# ============================================================
+# 🧠 تحميل ملف all.json بأمان (إصلاح خطأ list has no attribute get)
+# ============================================================
+import json
+
+ALL_FILE = f"{DATA_PATH}/all.json"
+all_data = {}
+
+if os.path.exists(ALL_FILE):
+    try:
+        with open(ALL_FILE, "r", encoding="utf-8") as f:
+            all_data = json.load(f)
+
+        # ✅ حماية من تلف البيانات
+        if isinstance(all_data, list):
+            print("[WARN] all_data was list → resetting to empty dict")
+            all_data = {}
+        elif isinstance(all_data, dict) and isinstance(all_data.get("data"), list):
+            print("[WARN] all_data['data'] was list → converting")
+            all_data["data"] = {}
+    except Exception as e:
+        print(f"[ERROR] Failed to load all_data: {e}")
+        all_data = {}
+else:
+    all_data = {}
+
+# ✅ ضمان أن المتغير النهائي هو قاموس
+if not isinstance(all_data, dict):
+    all_data = {}
+
+
 app = Flask(__name__)
 POLY_KEY  = (os.environ.get("POLYGON_API_KEY") or "").strip()
 BASE_SNAP = "https://api.polygon.io/v3/snapshot/options"
