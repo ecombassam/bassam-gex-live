@@ -557,12 +557,54 @@ def get_symbol_data(symbol):
 # ---------------------- /all/pine --------------------------
 @app.route("/all/pine")
 def all_pine():
-    if not POLY_KEY: return _err("Missing POLYGON_API_KEY", 401)
+    if not POLY_KEY:
+        return _err("Missing POLYGON_API_KEY", 401)
 
     blocks = []
+
+    # ===============================
+    # 🔹 تحديد بداية الأسبوع للمقارنة
+    # ===============================
+    today = dt.date.today()
+    monday = today - dt.timedelta(days=today.weekday())  # يوم الاثنين الحالي
+    monday_key = monday.isoformat()
+    today_key = today.isoformat()
+
+    # ✅ تحميل بيانات baseline من الملف (لضمان توفرها)
+    load_baseline()
+
     for sym in SYMBOLS:
         data = get_symbol_data(sym)
-        if not data: continue
+        if not data:
+            continue
+
+        # ===============================
+        # 🧠 تحليل السيولة الأسبوعي
+        # ===============================
+        flow_signal = "⚪ لا بيانات أسبوعية"
+
+        base_week = DAILY_BASE.get(sym, {})
+        for expiry, daily_points in base_week.items():
+            base_mon = daily_points.get(monday_key)
+            base_today = daily_points.get(today_key)
+            if base_mon and base_today:
+                d_calls = base_today["calls"] - base_mon["calls"]
+                d_puts  = base_today["puts"]  - base_mon["puts"]
+
+                if d_calls > 0 and d_puts < 0:
+                    flow_signal = "📈 تدفق صعودي من بداية الأسبوع"
+                elif d_calls < 0 and d_puts > 0:
+                    flow_signal = "📉 تدفق هبوطي من بداية الأسبوع"
+                else:
+                    flow_signal = "⚪ تدفق متذبذب"
+                break  # نوقف عند أول expiry نلقاه
+
+        # ✅ بإمكانك طباعة النتيجة للمراجعة في الـ Logs
+        print(f"[FlowWeek] {sym}: {flow_signal}")
+
+        # -------------------------------------------------------
+        # 👇 بعدين يكمّل الكود الأصلي بالضبط كما هو بدون حذف
+        # -------------------------------------------------------
 
         # Weekly CURRENT arrays
         wc_s, wc_p, wc_iv, wc_sgn = normalize_for_pine_v51(data["weekly_current"]["picks"])
@@ -592,6 +634,8 @@ def all_pine():
         sig_next = sigs.get("next") or {}
         sig_text_curr = sig_curr.get("signal", {}).get("signal", "⚪ Neutral")
         sig_text_next = sig_next.get("signal", {}).get("signal", "⚪ Neutral")
+
+        # ✳️ هنا تقدر تضيف لاحقًا سطر داخل الـ block لإظهار flow_signal داخل Pine
 
         block = f"""
 //========= {sym} =========
