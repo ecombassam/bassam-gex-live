@@ -31,6 +31,21 @@ CACHE_EXPIRY = 3600  # 1h
 # ⏱️ Baselines (نحفظ خط أساس يومي للمقارنة Δ)
 # structure: DAILY_BASE[symbol][expiry] = {"date":"YYYY-MM-DD","calls":x,"puts":y,"iv_atm":z}
 DAILY_BASE = {}
+BASELINE_PATH = "data/baseline.json"
+
+def load_baseline():
+    global DAILY_BASE
+    if os.path.exists(BASELINE_PATH):
+        try:
+            with open(BASELINE_PATH, "r", encoding="utf-8") as f:
+                DAILY_BASE = json.load(f)
+        except:
+            DAILY_BASE = {}
+
+def save_baseline():
+    os.makedirs("data", exist_ok=True)
+    with open(BASELINE_PATH, "w", encoding="utf-8") as f:
+        json.dump(DAILY_BASE, f, ensure_ascii=False, indent=2)
 
 # ---------- Config thresholds للـ Credit Signal ----------
 MIN_BASE_OI  = 50     # أقل OI إجمالي معقول للقياس
@@ -365,6 +380,7 @@ def _set_baseline(symbol, expiry, agg):
         "puts":  float(agg["puts"]  or 0.0),
         "iv_atm": float(agg["iv_atm"] or 0.0)
     }
+    save_baseline()
 
 def _detect_credit_signal(today_agg, base_agg):
     """
@@ -1226,6 +1242,7 @@ def opportunities_json():
 
 
 if __name__ == "__main__":
+    load_baseline()  # 🔹 استرجاع الخط الأساسي عند الإقلاع
     import threading
     threading.Thread(target=warmup_cache, daemon=True).start()
     threading.Thread(target=auto_refresh, daemon=True).start()
