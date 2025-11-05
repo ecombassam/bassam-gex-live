@@ -905,6 +905,16 @@ def report_pine_all():
         symbols = data.get("symbols", [])
         all_data = data.get("data", {})
 
+        # 🩵 إصلاح تلقائي لو كانت البيانات غير منظمة (list بدل dict)
+        if isinstance(all_data, list):
+            print("[WARN] all_data was list, fixing structure...")
+            fixed = {}
+            for entry in all_data:
+                if isinstance(entry, dict) and "symbol" in entry:
+                    fixed[entry["symbol"]] = entry
+            all_data = fixed
+
+
         def classify(sig_text: str):
             s = (sig_text or "").strip()
             if "Bull" in s or "Put" in s or "📈" in s:
