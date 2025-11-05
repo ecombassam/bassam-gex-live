@@ -1001,13 +1001,17 @@ def report_pine_all():
         # ========================================
         # 🔹 توليد صفوف التقرير (HTML Table Rows)
         # ========================================
+        # تأكد أن all_data قاموس
+        if isinstance(all_data, list):
+            print("[WARN] all_data was list, resetting...")
+            all_data = {}
+        
         for sym in symbols:
-            s = all_data.get(sym)
+            s = all_data.get(sym) if isinstance(all_data, dict) else None
             if not isinstance(s, dict):
                 print(f"[WARN] {sym} invalid data type ({type(s)}), resetting...")
                 s = {}
 
-        
             # 🩵 حماية ذكية ضد بيانات غير صالحة (list أو dict)
             if isinstance(s, list):
                 if len(s) > 0 and isinstance(s[0], dict):
