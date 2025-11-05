@@ -783,7 +783,6 @@ def report_pine_all():
         # ========================================
         for sym in symbols:
             s = all_data.get(sym, {})
-
             # 🔸 حماية ضد البيانات غير المكتملة
             wcur = s.get("weekly_current", {})
             wk = []
