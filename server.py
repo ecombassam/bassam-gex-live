@@ -46,7 +46,7 @@ if not isinstance(all_data, dict):
 
 
 app = Flask(__name__)
-POLY_KEY  = (os.environ.get("POLYGON_API_KEY") or "").strip()
+POLY_KEY = (os.environ.get("POLYGON_API_KEY") or os.environ.get("POLYGON_API") or "").strip()
 BASE_SNAP = "https://api.polygon.io/v3/snapshot/options"
 TODAY     = dt.date.today
 
